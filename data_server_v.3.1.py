@@ -351,7 +351,8 @@ def clear_cache(csv_path: str = None) -> str:
 def create_derived_feature(
     csv_path: str,
     expression: str,
-    new_column_name: str
+    new_column_name: str,
+    save_to: str = None
 ) -> dict:
     """
     Create a new feature using a mathematical expression involving existing columns.
@@ -367,12 +368,18 @@ def create_derived_feature(
         
         _DATA_CACHE[csv_path] = df
         
-        return {
+        result = {
             "message": f"Created feature '{new_column_name}'",
             "expression": expression,
             "preview": df[[new_column_name]].head().to_dict(),
             "new_shape": df.shape
         }
+        
+        if save_to:
+            df.to_csv(save_to, index=False)
+            result["saved_to"] = save_to
+            
+        return result
     except Exception as e:
         raise ValueError(f"Feature creation failed: {str(e)}")
 
@@ -381,7 +388,8 @@ def create_polynomial_features(
     csv_path: str,
     columns: list[str],
     degree: int = 2,
-    interaction_only: bool = False
+    interaction_only: bool = False,
+    save_to: str = None
 ) -> dict:
     """
     Generate polynomial and interaction features.
@@ -414,13 +422,19 @@ def create_polynomial_features(
                 
         _DATA_CACHE[csv_path] = df
         
-        return {
+        result = {
             "message": f"Generated {new_features_count} new polynomial features",
             "input_columns": columns,
             "degree": degree,
             "new_columns": [c for c in feature_names if c not in columns],
             "new_shape": df.shape
         }
+        
+        if save_to:
+            df.to_csv(save_to, index=False)
+            result["saved_to"] = save_to
+            
+        return result
     except Exception as e:
         raise ValueError(f"Polynomial feature generation failed: {str(e)}")
 
@@ -428,7 +442,8 @@ def create_polynomial_features(
 def extract_datetime_features(
     csv_path: str,
     column: str,
-    features: list[str] = ["year", "month", "day", "dayofweek"]
+    features: list[str] = ["year", "month", "day", "dayofweek"],
+    save_to: str = None
 ) -> dict:
     """
     Extract temporal features from a datetime column.
@@ -471,12 +486,18 @@ def extract_datetime_features(
             
         _DATA_CACHE[csv_path] = df
         
-        return {
+        result = {
             "message": f"Extracted {len(created_features)} datetime features",
             "source_column": column,
             "created_columns": created_features,
             "new_shape": df.shape
         }
+        
+        if save_to:
+            df.to_csv(save_to, index=False)
+            result["saved_to"] = save_to
+            
+        return result
     except Exception as e:
         raise ValueError(f"Datetime extraction failed: {str(e)}")
 
