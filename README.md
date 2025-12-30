@@ -12,8 +12,45 @@
 
 본 시스템은 **MCP 프로토콜**을 기반으로 LLM 에이전트가 26개의 데이터 분석 도구를 자동으로 호출하여 탐색, 전처리, 시각화, 모델링, 통계 분석을 수행합니다.
 
-```
-User Query → LLM Agent → MCP Tools → Results → Conversation
+```mermaid
+graph LR
+    %% Styles
+    classDef blue fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef purple fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef orange fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef green fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef gray fill:#fafafa,stroke:#333,stroke-width:2px
+
+    User((사용자))
+    
+    subgraph Client [Client Layer]
+        Agent[LangGraph<br/>Agent]
+        Hist[대화<br/>기록]
+    end
+    
+    LLM[LLM Engine<br/>OpenAI/Ollama]
+    
+    subgraph MCPLayer [MCP Server Layer]
+        Server[FastMCP Server<br/>26 Tools]
+        Cache[Smart<br/>Cache]
+    end
+    
+    Files[(File System<br/>CSV, PNG)]
+
+    User <-->|1. 질문/응답| Agent
+    Agent <--> Hist
+    Agent <-->|2. 프롬프트| LLM
+    LLM -->|3. 도구 호출| Agent
+    Agent <-->|4. MCP Protocol| Server
+    Server <--> Cache
+    Server <-->|5. 데이터 처리| Files
+    Server -->|6. 결과| Agent
+
+    class User gray
+    class Agent,Hist blue
+    class LLM orange
+    class Server,Cache purple
+    class Files green
 ```
 
 ## Core Components
