@@ -7,8 +7,8 @@ import plotly.express as px
 import os
 from scipy import stats
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
+from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report,
@@ -26,6 +26,24 @@ except ImportError:
 
 # --- [Smart Cache Manager] ---
 _DATA_CACHE = {}
+
+# --- [Korean Font Setup] ---
+import platform
+from matplotlib import font_manager, rc
+
+system_name = platform.system()
+if system_name == "Windows":
+    # Windows: Malgun Gothic
+    rc('font', family='Malgun Gothic')
+elif system_name == "Darwin":
+    # Mac: AppleGothic
+    rc('font', family='AppleGothic')
+else:
+    # Linux: NanumGothic (if installed)
+    rc('font', family='NanumGothic')
+
+# Fix minus sign display issue
+plt.rcParams['axes.unicode_minus'] = False
 
 mcp = FastMCP("DataAnalysis")
 
@@ -326,6 +344,141 @@ def clear_cache(csv_path: str = None) -> str:
         count = len(_DATA_CACHE)
         _DATA_CACHE.clear()
         return f"Cache cleared successfully. {count} dataset(s) removed from memory."
+
+# --- [Phase 3.5: Advanced Feature Engineering] ---
+
+@mcp.tool()
+def create_derived_feature(
+    csv_path: str,
+    expression: str,
+    new_column_name: str
+) -> dict:
+    """
+    Create a new feature using a mathematical expression involving existing columns.
+    Supported operators: +, -, *, /, ** (power), (, )
+    Example: expression="price / area", new_column_name="price_per_sqft"
+    """
+    df = get_data(csv_path).copy()
+    
+    try:
+        # Safety check: simplistic validation to allow only column names and math symbols
+        # This uses pandas eval which is reasonably efficient and safer than eval()
+        df[new_column_name] = df.eval(expression)
+        
+        _DATA_CACHE[csv_path] = df
+        
+        return {
+            "message": f"Created feature '{new_column_name}'",
+            "expression": expression,
+            "preview": df[[new_column_name]].head().to_dict(),
+            "new_shape": df.shape
+        }
+    except Exception as e:
+        raise ValueError(f"Feature creation failed: {str(e)}")
+
+@mcp.tool()
+def create_polynomial_features(
+    csv_path: str,
+    columns: list[str],
+    degree: int = 2,
+    interaction_only: bool = False
+) -> dict:
+    """
+    Generate polynomial and interaction features.
+    Useful for capturing non-linear relationships.
+    """
+    df = get_data(csv_path).copy()
+    
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"Columns not found: {missing}")
+        
+    try:
+        poly = PolynomialFeatures(degree=degree, interaction_only=interaction_only, include_bias=False)
+        poly_data = poly.fit_transform(df[columns])
+        
+        feature_names = poly.get_feature_names_out(columns)
+        
+        # Create a DataFrame with new features
+        poly_df = pd.DataFrame(poly_data, columns=feature_names, index=df.index)
+        
+        # Drop original columns to avoid duplicates if they are part of the output (usually degree 1 terms are kept)
+        # However, PolynomialFeatures output includes original cols. 
+        # We'll merge carefully. 
+        # Actually, let's just add the valid NEW columns that don't exist
+        new_features_count = 0
+        for col in feature_names:
+            if col not in df.columns:
+                df[col] = poly_df[col]
+                new_features_count += 1
+                
+        _DATA_CACHE[csv_path] = df
+        
+        return {
+            "message": f"Generated {new_features_count} new polynomial features",
+            "input_columns": columns,
+            "degree": degree,
+            "new_columns": [c for c in feature_names if c not in columns],
+            "new_shape": df.shape
+        }
+    except Exception as e:
+        raise ValueError(f"Polynomial feature generation failed: {str(e)}")
+
+@mcp.tool()
+def extract_datetime_features(
+    csv_path: str,
+    column: str,
+    features: list[str] = ["year", "month", "day", "dayofweek"]
+) -> dict:
+    """
+    Extract temporal features from a datetime column.
+    Supported features: year, month, day, hour, minute, second, dayofweek, quarter, is_weekend
+    """
+    df = get_data(csv_path).copy()
+    
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found.")
+        
+    try:
+        # Ensure column is datetime
+        if not pd.api.types.is_datetime64_any_dtype(df[column]):
+            df[column] = pd.to_datetime(df[column])
+            
+        created_features = []
+        
+        for feat in features:
+            new_col = f"{column}_{feat}"
+            if feat == "year":
+                df[new_col] = df[column].dt.year
+            elif feat == "month":
+                df[new_col] = df[column].dt.month
+            elif feat == "day":
+                df[new_col] = df[column].dt.day
+            elif feat == "hour":
+                df[new_col] = df[column].dt.hour
+            elif feat == "minute":
+                df[new_col] = df[column].dt.minute
+            elif feat == "second":
+                df[new_col] = df[column].dt.second
+            elif feat == "dayofweek":
+                df[new_col] = df[column].dt.dayofweek
+            elif feat == "quarter":
+                df[new_col] = df[column].dt.quarter
+            elif feat == "is_weekend":
+                df[new_col] = df[column].dt.dayofweek.isin([5, 6]).astype(int)
+            
+            created_features.append(new_col)
+            
+        _DATA_CACHE[csv_path] = df
+        
+        return {
+            "message": f"Extracted {len(created_features)} datetime features",
+            "source_column": column,
+            "created_columns": created_features,
+            "new_shape": df.shape
+        }
+    except Exception as e:
+        raise ValueError(f"Datetime extraction failed: {str(e)}")
 
 # --- [Phase 2: EDA Visualization Tools] ---
 
@@ -715,7 +868,7 @@ def plot_scatter(
     plt.figure(figsize=(figsize_width, figsize_height))
     try:
         # Create scatter plot
-        sns.scatterplot(
+        ax = sns.scatterplot(
             data=df,
             x=x_column,
             y=y_column,
@@ -733,11 +886,28 @@ def plot_scatter(
         # Legend customization
         if hue_column:
             if show_legend:
-                legend = plt.legend(loc=legend_position)
-                if legend_title:
-                    legend.set_title(legend_title)
+                # Fix: Get handles/labels from the seaborn plot and recreate legend at custom position
+                # This ensures seaborn's styling is preserved but moved to 'loc'
+                try:
+                    handles, labels = ax.get_legend_handles_labels()
+                    if not handles: # If seaborn didn't return standard handles, try fetching from axes
+                        handles, labels = plt.gca().get_legend_handles_labels()
+                    
+                    if handles:
+                         plt.legend(
+                             handles=handles, 
+                             labels=labels,
+                             loc=legend_position,
+                             title=legend_title or hue_column
+                         )
+                except:
+                     # Fallback if handle extraction fails
+                    plt.legend(loc=legend_position)
             else:
-                plt.legend().remove()
+                if ax.legend_:
+                    ax.legend_.remove()
+                else:
+                    plt.legend().remove()
         
         # Save plot
         safe_x = "".join(c for c in x_column if c.isalnum() or c in (' ', '_')).replace(' ', '_')
@@ -1288,6 +1458,138 @@ def scale_features(
         df.to_csv(save_to, index=False)
         result["output_path"] = save_to
     
+# --- [Phase 5: Model Optimization] ---
+
+@mcp.tool()
+def tune_hyperparameters(
+    csv_path: str,
+    target_column: str,
+    model_type: str = "RandomForest",
+    param_grid: dict = None,
+    cv: int = 5,
+    scoring: str = "accuracy"
+) -> dict:
+    """
+    Optimize model hyperparameters using GridSearchCV or RandomizedSearchCV.
+    
+    Args:
+        csv_path: Path to CSV file
+        target_column: Target variable
+        model_type: 'RandomForest', 'XGBoost', 'LogisticRegression', 'SVM'
+        param_grid: Dictionary of parameters to search (optional, default will be used)
+        cv: Cross-validation splits (default: 5)
+        scoring: Scoring metric (default: 'accuracy' for classification)
+    """
+    df = get_data(csv_path)
+    
+    if target_column not in df.columns:
+        raise ValueError(f"Target column '{target_column}' not found.")
+        
+    # --- Preprocessing (Simplified) ---
+    X = df.drop(columns=[target_column])
+    y = df[target_column]
+    
+    # Handle non-numeric columns
+    X = pd.get_dummies(X, drop_first=True)
+    
+    if y.dtype == 'object':
+        le = LabelEncoder()
+        y = le.fit_transform(y)
+        is_classification = True
+    else:
+        # Check if target has few unique values -> Classification
+        if y.nunique() < 20: 
+             is_classification = True
+        else:
+             is_classification = False
+    
+    # --- Model & Param Grid Setup ---
+    model = None
+    default_params = {}
+    
+    if model_type == "RandomForest":
+        if is_classification:
+            model = RandomForestClassifier(random_state=42)
+            default_params = {
+                'n_estimators': [50, 100, 200],
+                'max_depth': [None, 10, 20, 30],
+                'min_samples_split': [2, 5, 10]
+            }
+        else:
+            model = RandomForestRegressor(random_state=42)
+            default_params = {
+                'n_estimators': [50, 100, 200],
+                'max_depth': [None, 10, 20],
+                'min_samples_split': [2, 5]
+            }
+            if scoring == 'accuracy': scoring = 'neg_mean_squared_error'
+
+    elif model_type == "XGBoost" and XGBOOST_AVAILABLE:
+        if is_classification:
+            model = XGBClassifier(eval_metric='logloss')
+            default_params = {
+                'n_estimators': [100, 200],
+                'learning_rate': [0.01, 0.1, 0.3],
+                'max_depth': [3, 5, 7]
+            }
+        else:
+            model = XGBRegressor()
+            default_params = {
+                'n_estimators': [100, 200],
+                'learning_rate': [0.01, 0.1, 0.3],
+                'max_depth': [3, 5, 7]
+            }
+            if scoring == 'accuracy': scoring = 'neg_mean_squared_error'
+            
+    elif model_type == "LogisticRegression":
+        if not is_classification: raise ValueError("LogisticRegression is for classification only.")
+        model = LogisticRegression(max_iter=1000)
+        default_params = {'C': [0.1, 1.0, 10.0]}
+        
+    elif model_type == "SVM":
+        if is_classification:
+            model = SVC()
+            default_params = {'C': [0.1, 1, 10], 'kernel': ['linear', 'rbf']}
+        else:
+            model = SVR()
+            default_params = {'C': [0.1, 1, 10], 'kernel': ['linear', 'rbf']}
+            if scoring == 'accuracy': scoring = 'neg_mean_squared_error'
+            
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+
+    # Use provided param_grid if available, else default
+    params = param_grid if param_grid else default_params
+    
+    # --- Hyperparameter Tuning ---
+    try:
+        # Use RandomizedSearchCV if grid is large, else GridSearchCV
+        total_combinations = 1
+        for v in params.values():
+            total_combinations *= len(v)
+            
+        if total_combinations > 20: 
+            search = RandomizedSearchCV(model, params, n_iter=20, cv=cv, scoring=scoring, n_jobs=-1, random_state=42)
+            method = "RandomizedSearchCV"
+        else:
+            search = GridSearchCV(model, params, cv=cv, scoring=scoring, n_jobs=-1)
+            method = "GridSearchCV"
+            
+        search.fit(X, y)
+        
+        return {
+            "best_params": search.best_params_,
+            "best_score": round(search.best_score_, 4),
+            "scoring_metric": scoring,
+            "method": method,
+            "model_type": model_type,
+            "is_classification": is_classification
+        }
+        
+    except Exception as e:
+        raise ValueError(f"Hyperparameter tuning failed: {str(e)}")
+
+    
     return result
 
 @mcp.prompt()
@@ -1300,6 +1602,9 @@ def default_prompt(message: str) -> list[base.Message]:
             "Be concise and execute tools right away. "
             "ALWAYS respond in Korean (한국어로 응답). "
             "Provide clear explanations in Korean for all analysis results.\n\n"
+            "**Tool Selection Rules:**\n"
+            "- If user mentions 'interactive', 'html', 'zoom', 'plot_interactive', OR '인터랙티브', '반응형': YOU MUST USE `plot_interactive_` tools (e.g., plot_interactive_scatter).\n"
+            "- Otherwise, use standard static plotting tools (e.g., plot_scatter).\n\n"
             "**Analysis Workflow:**\n"
             "- If user asks for '분석' (analysis) without specifics: Start with get_dataset_info or profile_dataset first.\n"
             "- Only proceed to visualization or modeling if explicitly requested or after basic profiling.\n"
