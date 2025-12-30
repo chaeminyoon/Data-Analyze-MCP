@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green.svg)
-![Ollama](https://img.shields.io/badge/Ollama-Qwen3-70b-orange.svg)
+![Ollama](https://img.shields.io/badge/Ollama-Qwen3--70B-ff7a18?style=flat&logo=ollama&logoColor=white)
 
 **26개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
 
