@@ -397,8 +397,37 @@ def plot_histogram(
         raise ValueError(f"Visualization failed: {str(e)}")
 
 @mcp.tool()
-def plot_boxplot(csv_path: str, column: str, by_column: str = None) -> str:
-    """Generate boxplot for outlier visualization."""
+def plot_boxplot(
+    csv_path: str, 
+    column: str, 
+    by_column: str = None,
+    title: str = None,
+    xlabel: str = None,
+    ylabel: str = None,
+    figsize_width: int = 10,
+    figsize_height: int = 6,
+    color: str = "skyblue",
+    alpha: float = 0.6,
+    show_legend: bool = False,
+    legend_label: str = None
+) -> str:
+    """
+    Generate customizable boxplot for outlier visualization.
+    
+    Args:
+        csv_path: Path to CSV file
+        column: Column name to visualize (numerical)
+        by_column: Optional column to group by (categorical)
+        title: Custom plot title (optional)
+        xlabel: Custom x-axis label (optional)
+        ylabel: Custom y-axis label (optional)
+        figsize_width: Figure width in inches (default: 10)
+        figsize_height: Figure height in inches (default: 6)
+        color: Box color (default: "skyblue")
+        alpha: Transparency (0-1, default: 0.6)
+        show_legend: Show legend (default: False)
+        legend_label: Custom legend label (optional)
+    """
     df = get_data(csv_path)
     
     if column not in df.columns:
@@ -407,19 +436,45 @@ def plot_boxplot(csv_path: str, column: str, by_column: str = None) -> str:
     if by_column and by_column not in df.columns:
         raise ValueError(f"Column '{by_column}' not found in CSV.")
     
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(figsize_width, figsize_height))
     try:
         if by_column:
-            df.boxplot(column=column, by=by_column, figsize=(10, 6))
-            plt.suptitle('')
-            plt.title(f"Boxplot of {column} by {by_column}")
+            # Using seaborn for better control with hue
+            sns.boxplot(
+                data=df,
+                x=by_column,
+                y=column,
+                hue=by_column, # Use by_column for hue if it's categorical
+                legend=show_legend,
+                palette="Set2" # Example palette, can be customized
+            )
+            plt.title(title or f"Boxplot of {column} by {by_column}")
+            plt.xlabel(xlabel or by_column)
+            plt.ylabel(ylabel or column)
+            
+            if show_legend:
+                 # Legend is handled by seaborn's hue, but we can customize title
+                 plt.legend(title=legend_label or by_column)
+            
         else:
-            df.boxplot(column=column, figsize=(8, 6))
-            plt.title(f"Boxplot of {column}")
-        
-        plt.ylabel(column)
+            sns.boxplot(
+                data=df,
+                y=column,
+                color=color,
+                # alpha is not directly supported in boxplot, but we can stick to color
+            )
+            plt.title(title or f"Boxplot of {column}")
+            plt.xlabel(xlabel) # No default x-label if not by_column
+            plt.ylabel(ylabel or column)
+            
+            # Boxplot without hue usually doesn't need a legend, but if requested:
+            if show_legend:
+                 import matplotlib.patches as mpatches
+                 patch = mpatches.Patch(color=color, label=legend_label or column)
+                 plt.legend(handles=[patch])
+
         safe_col = "".join(c for c in column if c.isalnum() or c in (' ', '_')).replace(' ', '_')
-        safe_by = "".join(c for c in (by_column or "") if c.isalnum() or c in (' ', '_')).replace(' ', '_') if by_column else ""
+        safe_by = "".join(c for c in (by_column or "")) if by_column else ""
         output_path = f"boxplot_{safe_col}{'_by_' + safe_by if safe_by else ''}.png"
         plt.savefig(output_path, dpi=100, bbox_inches='tight')
         plt.close()
