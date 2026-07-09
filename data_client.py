@@ -24,8 +24,13 @@ LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama").lower()
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.2.209:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:72b")
 
-# Launch the server package directly; no more version-suffixed filenames.
-server_params = StdioServerParameters(command="python", args=["-m", "data_analysis"])
+# Launch the server package directly. Put ./src on PYTHONPATH so it runs from a
+# fresh checkout without `pip install`; an installed package works too.
+_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+_server_env = {**os.environ, "PYTHONPATH": os.pathsep.join([_SRC, os.environ.get("PYTHONPATH", "")])}
+server_params = StdioServerParameters(
+    command="python", args=["-m", "data_analysis"], env=_server_env
+)
 
 
 def build_model():

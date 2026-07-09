@@ -143,23 +143,25 @@ graph LR
 
 ```
 Data-Analyze-MCP/
-├── data_analysis/              # [Core] MCP 서버 패키지
-│   ├── __main__.py             #   진입점 (python -m data_analysis)
-│   ├── server.py               #   공유 FastMCP 인스턴스
-│   ├── config.py               #   환경변수 기반 설정
-│   ├── cache.py                #   데이터셋 캐시 / 로더
-│   ├── helpers.py              #   공통 검증·플로팅·ML 헬퍼
-│   ├── fonts.py                #   한글 폰트 설정
-│   ├── prompts.py              #   MCP 기본 프롬프트
-│   └── tools/                  #   도메인별 도구 모듈
-│       ├── exploration.py      #     탐색·프로파일링
-│       ├── preprocessing.py    #     결측치·이상치·인코딩·스케일링
-│       ├── feature_engineering.py #  파생·다항·시계열 피처
-│       ├── visualization.py    #     정적/인터랙티브 시각화
-│       ├── ml.py               #     모델 비교·평가·튜닝
-│       └── statistics.py       #     상관·가설검정
+├── src/
+│   └── data_analysis/          # [Core] MCP 서버 패키지
+│       ├── __main__.py         #   진입점 (python -m data_analysis)
+│       ├── server.py           #   공유 FastMCP 인스턴스
+│       ├── config.py           #   환경변수 기반 설정
+│       ├── cache.py            #   데이터셋 캐시 / 로더
+│       ├── helpers.py          #   공통 검증·플로팅·ML 헬퍼
+│       ├── fonts.py            #   한글 폰트 설정
+│       ├── prompts.py          #   MCP 기본 프롬프트
+│       └── tools/              #   도메인별 도구 모듈
+│           ├── exploration.py         # 탐색·프로파일링
+│           ├── preprocessing.py       # 결측치·이상치·인코딩·스케일링
+│           ├── feature_engineering.py # 파생·다항·시계열 피처
+│           ├── visualization.py       # 정적/인터랙티브 시각화
+│           ├── ml.py                  # 모델 비교·평가·튜닝
+│           └── statistics.py          # 상관·가설검정
 ├── data_client.py              # [UI] LangGraph 기반 대화형 클라이언트
 ├── generate_all_test_data.py   # [Scripts] 테스트 데이터 생성기
+├── pyproject.toml              # 패키지 메타데이터 (src-layout)
 ├── requirements.txt            # 의존성 목록
 ├── README.md                   # 프로젝트 문서
 └── .gitignore                  # Git 제외 설정
@@ -183,7 +185,10 @@ ollama pull qwen2.5:72b
 ### 2. Installation
 
 ```bash
-# 의존성 설치
+# 방법 A) 패키지로 설치 (권장) — `data-analysis` 명령과 python -m 둘 다 사용 가능
+pip install -e .
+
+# 방법 B) 의존성만 설치 — 클라이언트가 ./src 를 PYTHONPATH에 얹어 서버를 실행
 pip install -r requirements.txt
 ```
 
@@ -221,7 +226,7 @@ export OLLAMA_URL=http://localhost:11434
 python data_client.py
 ```
 
-> 서버만 단독 실행하려면: `python -m data_analysis`
+> 서버만 단독 실행하려면: `data-analysis` (설치 시) 또는 `PYTHONPATH=src python -m data_analysis`
 
 접속 성공 시:
 ```
