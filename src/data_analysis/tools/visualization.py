@@ -78,9 +78,11 @@ def plot_boxplot(
     plt.figure(figsize=(figsize_width, figsize_height))
     try:
         if by_column:
+            n_levels = int(df[by_column].nunique())
+            palette = (theming.palette() * (n_levels // 8 + 1))[:n_levels]
             sns.boxplot(
                 data=df, x=by_column, y=column, hue=by_column,
-                legend=show_legend, palette=theming.palette(),
+                legend=show_legend, palette=palette,
             )
             plt.title(title or f"Boxplot of {column} by {by_column}")
             plt.xlabel(xlabel or by_column)

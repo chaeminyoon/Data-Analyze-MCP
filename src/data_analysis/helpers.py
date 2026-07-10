@@ -34,6 +34,20 @@ def require_numeric(df: pd.DataFrame, column: str) -> None:
         raise ValueError(f"Column '{column}' must be numeric.")
 
 
+def string_columns(df: pd.DataFrame) -> list[str]:
+    """Names of string-like columns, across pandas versions.
+
+    pandas 2 stores strings as ``object``; pandas 3 uses the ``str`` dtype and
+    deprecates selecting it via ``select_dtypes(include=["object"])``
+    (removal planned for pandas 4). This helper covers both without warnings.
+    """
+    return [
+        c
+        for c in df.columns
+        if pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c])
+    ]
+
+
 # --- [Output artifacts] ----------------------------------------------------
 def safe_name(text: str) -> str:
     """Sanitise a string for use in a filename."""

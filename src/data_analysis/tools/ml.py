@@ -24,7 +24,13 @@ from sklearn.svm import SVC, SVR
 
 from ..cache import get_data
 from ..config import CLASSIFICATION_MAX_UNIQUE
-from ..helpers import is_classification_target, require_columns, safe_name, save_current_figure
+from ..helpers import (
+    is_classification_target,
+    require_columns,
+    safe_name,
+    save_current_figure,
+    string_columns,
+)
 from ..server import mcp
 
 try:
@@ -47,7 +53,7 @@ def _prepare_xy(df: pd.DataFrame, target_column: str, feature_columns: list | No
     data = pd.concat([X, y], axis=1).dropna()
     X, y = data[X.columns], data[target_column]
 
-    for col in X.select_dtypes(include=["object"]).columns:
+    for col in string_columns(X):
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
     return X, y
 

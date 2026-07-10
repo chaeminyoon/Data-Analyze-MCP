@@ -4,7 +4,7 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
 from ..cache import get_data, store
 from ..config import PREVIEW_LIMIT
-from ..helpers import require_columns, require_numeric
+from ..helpers import require_columns, require_numeric, string_columns
 from ..server import mcp
 
 
@@ -39,7 +39,7 @@ def handle_missing_values(csv_path: str, strategy: dict = None, save_to: str = N
             df[col] = df[col].ffill()
         strategies_used[col] = strat
 
-    for col in df.select_dtypes(include=["object"]).columns:
+    for col in string_columns(df):
         if df[col].isnull().sum() == 0:
             continue
         strat = strategy.get("categorical", "mode")
