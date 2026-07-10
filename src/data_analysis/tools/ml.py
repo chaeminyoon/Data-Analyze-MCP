@@ -242,7 +242,8 @@ def tune_hyperparameters(
     X = pd.get_dummies(df.drop(columns=[target_column]), drop_first=True)
     y = df[target_column]
 
-    if y.dtype == "object":
+    # dtype-agnostic: pandas 3 strings are 'str' dtype, not 'object'
+    if not pd.api.types.is_numeric_dtype(y):
         y = LabelEncoder().fit_transform(y)
         is_classification = True
     else:

@@ -6,6 +6,10 @@
 
 **36개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
 
+> 🔌 **LLM에 연결하면 실제로 어떤 인풋/아웃풋이 오가는지** 궁금하다면:
+> [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md) — 실측 4턴 세션 로그 포함
+> (재현: `python examples/demo_session.py`)
+
 ---
 
 ## System Architecture
