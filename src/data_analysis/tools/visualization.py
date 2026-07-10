@@ -2,6 +2,7 @@
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import seaborn as sns
 
@@ -204,6 +205,148 @@ def analyze_target_distribution(csv_path: str, target_column: str) -> dict:
         plt.close()
 
     return result
+
+
+@mcp.tool()
+def plot_line(
+    csv_path: str,
+    x_column: str,
+    y_column: str,
+    group_column: str = None,
+    resample: str = None,
+    agg: str = "mean",
+    interactive: bool = False,
+    title: str = None,
+    figsize_width: int = 12,
+    figsize_height: int = 6,
+) -> str:
+    """Generate a line chart, ideal for time series (datetime x-axis).
+
+    Args:
+        x_column: X-axis column; object columns that parse as dates are
+            converted automatically.
+        y_column: Numeric column to plot.
+        group_column: Optional category column — one line per group.
+        resample: Optional pandas frequency ('D', 'W', 'M', ...) to aggregate
+            a datetime x-axis into buckets.
+        agg: Aggregation for duplicate x values / resampling (mean, sum, ...).
+        interactive: True renders a Plotly HTML file instead of a PNG.
+    """
+    df = get_data(csv_path).copy()
+    require_columns(df, x_column, y_column, group_column)
+    if not pd.api.types.is_numeric_dtype(df[y_column]):
+        raise ValueError(f"Column '{y_column}' must be numeric.")
+
+    # Auto-convert date-like string x-axes so CSV dates plot chronologically.
+    if df[x_column].dtype == object:
+        converted = pd.to_datetime(df[x_column], errors="coerce", format="mixed")
+        if converted.notna().mean() > 0.9:
+            df[x_column] = converted
+
+    try:
+        keys = [group_column] if group_column else []
+        if resample:
+            if not pd.api.types.is_datetime64_any_dtype(df[x_column]):
+                raise ValueError("resample requires a datetime x_column.")
+            keys.append(pd.Grouper(key=x_column, freq=resample))
+        else:
+            keys.append(x_column)
+        data = df.groupby(keys, dropna=True)[y_column].agg(agg).reset_index()
+        data = data.sort_values(x_column)
+
+        base = f"line_{safe_name(y_column)}_over_{safe_name(x_column)}"
+        if interactive:
+            fig = px.line(
+                data, x=x_column, y=y_column, color=group_column,
+                title=title or f"{y_column} over {x_column}", template="plotly_white",
+            )
+            path = output_path(f"{base}.html")
+            fig.write_html(path)
+            return path
+
+        plt.figure(figsize=(figsize_width, figsize_height))
+        if group_column:
+            for g, sub in data.groupby(group_column):
+                plt.plot(sub[x_column], sub[y_column], marker=".", label=str(g))
+            plt.legend(title=group_column)
+        else:
+            plt.plot(data[x_column], data[y_column], marker=".")
+        plt.title(title or f"{y_column} over {x_column}")
+        plt.xlabel(x_column)
+        plt.ylabel(f"{agg}({y_column})" if resample else y_column)
+        plt.xticks(rotation=30, ha="right")
+        return save_current_figure(f"{base}.png")
+    except ValueError:
+        plt.close()
+        raise
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_bar(
+    csv_path: str,
+    column: str,
+    y_column: str = None,
+    agg: str = "mean",
+    top_n: int = 20,
+    interactive: bool = False,
+    title: str = None,
+    figsize_width: int = 10,
+    figsize_height: int = 6,
+) -> str:
+    """Generate a bar chart of category frequencies or aggregated values.
+
+    Args:
+        column: Categorical column for the x-axis.
+        y_column: Optional numeric column; when given, bars show
+            ``agg(y_column)`` per category instead of counts.
+        agg: Aggregation when y_column is set (mean, sum, median, ...).
+        top_n: Show at most this many categories (largest first).
+        interactive: True renders a Plotly HTML file instead of a PNG.
+    """
+    df = get_data(csv_path)
+    require_columns(df, column, y_column)
+
+    try:
+        if y_column:
+            if not pd.api.types.is_numeric_dtype(df[y_column]):
+                raise ValueError(f"Column '{y_column}' must be numeric.")
+            data = df.groupby(column)[y_column].agg(agg).sort_values(ascending=False)
+            ylabel = f"{agg}({y_column})"
+        else:
+            data = df[column].value_counts()
+            ylabel = "Count"
+        total = len(data)
+        data = data.head(top_n)
+
+        base = f"bar_{safe_name(column)}" + (f"_{safe_name(y_column)}" if y_column else "")
+        chart_title = title or (
+            f"{ylabel} by {column}" + (f" (top {top_n} of {total})" if total > top_n else "")
+        )
+        if interactive:
+            plot_df = data.rename(ylabel).reset_index()
+            fig = px.bar(
+                plot_df, x=column, y=ylabel, title=chart_title, template="plotly_white",
+            )
+            path = output_path(f"{base}.html")
+            fig.write_html(path)
+            return path
+
+        plt.figure(figsize=(figsize_width, figsize_height))
+        data.plot(kind="bar")
+        plt.title(chart_title)
+        plt.xlabel(column)
+        plt.ylabel(ylabel)
+        plt.xticks(rotation=45, ha="right")
+        return save_current_figure(f"{base}.png")
+    except ValueError:
+        plt.close()
+        raise
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
 
 
 # --- [Interactive Plotly plots] --------------------------------------------
