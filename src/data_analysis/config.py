@@ -23,3 +23,6 @@ PREVIEW_LIMIT = int(os.getenv("MCP_PREVIEW_LIMIT", "100"))
 
 # Default DPI for saved matplotlib figures.
 FIGURE_DPI = int(os.getenv("MCP_FIGURE_DPI", "100"))
+
+# Chart theme applied at startup: modern | dark | minimal | vibrant | classic.
+CHART_THEME = os.getenv("MCP_CHART_THEME", "modern")

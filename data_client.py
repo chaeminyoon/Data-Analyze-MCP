@@ -1,11 +1,10 @@
 """Interactive LangGraph client for the DataAnalysis MCP server.
 
-Configuration is read from environment variables so the same script works
-against OpenAI or a self-hosted Ollama instance without code edits:
+This is a reference client for testing outside of Claude Desktop/Code.
+Configuration via environment variables (or a .env file):
 
-    LLM_BACKEND        "ollama" (default) | "openai"
-    MODEL_NAME         model id (default: qwen2.5:72b for ollama)
-    OLLAMA_URL         base url for the ollama server
+    OPENAI_API_KEY     required
+    MODEL_NAME         chat model id (default: gpt-4o-mini)
     AUTO_OPEN_RESULTS  "1" (default) opens newly generated charts in the OS
                        default viewer after each turn; "0" disables
 """
@@ -19,15 +18,14 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.prompts import load_mcp_prompt
 from langchain_mcp_adapters.tools import load_mcp_tools
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 load_dotenv()
 
-LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama").lower()
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.2.209:11434")
-MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:72b")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 AUTO_OPEN_RESULTS = os.getenv("AUTO_OPEN_RESULTS", "1") != "0"
 OUTPUT_DIR = Path(os.getenv("MCP_OUTPUT_DIR", "outputs"))
 
@@ -65,20 +63,8 @@ def open_new_outputs(before: dict) -> list[Path]:
     return fresh
 
 
-def build_model():
-    """Instantiate the chat model for the configured backend."""
-    if LLM_BACKEND == "openai":
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(model=os.getenv("MODEL_NAME", "gpt-4o-mini"))
-
-    from langchain_ollama import ChatOllama
-
-    return ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL, temperature=0, num_ctx=8192)
-
-
 async def run() -> None:
-    model = build_model()
+    model = ChatOpenAI(model=MODEL_NAME)
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -105,17 +91,17 @@ async def run() -> None:
                     user_input = input("You: ")
 
                     if user_input.lower() in ("exit", "quit", "q", "종료"):
-                        print("\n👋 종료합니다. 감사합니다!")
+                        print("\n종료합니다. 감사합니다!")
                         break
                     if user_input.lower() == "clear":
                         conversation_history = conversation_history[:1]  # keep system msg
-                        print("\n🔄 대화 기록이 초기화되었습니다.\n")
+                        print("\n대화 기록이 초기화되었습니다.\n")
                         continue
                     if not user_input.strip():
                         continue
 
                     conversation_history.append(HumanMessage(content=user_input))
-                    print("\n🤔 분석 중...\n")
+                    print("\n분석 중...\n")
 
                     before = snapshot_outputs()
                     response = await agent.ainvoke({"messages": conversation_history})
@@ -127,14 +113,14 @@ async def run() -> None:
                         fresh = open_new_outputs(before)
                         if fresh:
                             names = ", ".join(f.name for f in fresh)
-                            print(f"\n📊 결과 파일을 열었습니다: {names}")
+                            print(f"\n결과 파일을 열었습니다: {names}")
                     print("=" * 60 + "\n")
 
                 except (EOFError, KeyboardInterrupt):
-                    print("\n👋 종료합니다.")
+                    print("\n종료합니다.")
                     break
                 except Exception as exc:  # noqa: BLE001
-                    print(f"\n❌ 오류 발생: {exc}\n")
+                    print(f"\n오류 발생: {exc}\n")
                     if len(conversation_history) > 1:
                         conversation_history.pop()
 
