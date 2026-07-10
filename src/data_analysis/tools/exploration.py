@@ -5,7 +5,7 @@ import pandas as pd
 
 from ..cache import cached, clear, get_data
 from ..config import HIGH_CORRELATION_THRESHOLD, PREVIEW_LIMIT
-from ..helpers import classify_columns
+from ..helpers import classify_columns, string_columns
 from ..server import mcp
 
 
@@ -37,7 +37,7 @@ def profile_dataset(csv_path: str) -> dict:
     if numeric_cols:
         profile["numeric_stats"] = df[numeric_cols].describe().to_dict()
 
-    categorical_cols = df.select_dtypes(include=["object"]).columns.tolist()
+    categorical_cols = string_columns(df)
     if categorical_cols:
         cat_stats = {}
         for col in categorical_cols:
@@ -82,7 +82,7 @@ def detect_data_types(csv_path: str) -> dict:
     roles = classify_columns(df)
 
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    object_cols = df.select_dtypes(include=["object"]).columns
+    object_cols = string_columns(df)
     datetime_cols = [
         c for c, i in roles.items()
         if i["role"] == "datetime" or pd.api.types.is_datetime64_any_dtype(df[c])

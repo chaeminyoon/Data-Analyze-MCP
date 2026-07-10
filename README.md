@@ -8,6 +8,8 @@
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-green.svg)](https://modelcontextprotocol.io/)
 [![Tools](https://img.shields.io/badge/Tools-41-3d6fb6.svg)](#mcp-server-tools-41-total)
 [![Claude](https://img.shields.io/badge/Claude-Desktop%20%7C%20Code-d97757.svg)](https://claude.ai/)
+[![CI](https://github.com/chaeminyoon/Data-Analyze-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/chaeminyoon/Data-Analyze-MCP/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
 [빠른 시작](#quick-start) · [시연](#demo--분석--처리--시각화) · [차트 테마](#chart-themes) · [도구 목록](#mcp-server-tools-41-total) · [LLM 연동 가이드](docs/LLM_INTEGRATION.md)
 
