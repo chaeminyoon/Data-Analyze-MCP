@@ -4,7 +4,7 @@
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green.svg)
 ![Ollama](https://img.shields.io/badge/Ollama-Qwen3--70B-ff7a18?style=flat&logo=ollama&logoColor=white)
 
-**36개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
+**38개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
 
 > 🔌 **LLM에 연결하면 실제로 어떤 인풋/아웃풋이 오가는지** 궁금하다면:
 > [docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md) — 실측 4턴 세션 로그 포함
@@ -14,7 +14,7 @@
 
 ## System Architecture
 
-본 시스템은 **MCP 프로토콜**을 기반으로 LLM 에이전트가 36개의 데이터 분석 도구를 자동으로 호출하여 탐색, 전처리, 시각화, 모델링, 통계 분석을 수행합니다.
+본 시스템은 **MCP 프로토콜**을 기반으로 LLM 에이전트가 38개의 데이터 분석 도구를 자동으로 호출하여 탐색, 전처리, 시각화, 모델링, 통계 분석을 수행합니다.
 
 ```mermaid
 graph LR
@@ -35,7 +35,7 @@ graph LR
     LLM[LLM Engine<br/>OpenAI/Ollama]
     
     subgraph MCPLayer [MCP Server Layer]
-        Server[FastMCP Server<br/>36 Tools]
+        Server[FastMCP Server<br/>38 Tools]
         Cache[Smart<br/>Cache]
     end
     
@@ -62,7 +62,7 @@ graph LR
 | Component | Technology | Role |
 |-----------|-----------|------|
 | **LLM** | OpenAI (gpt-4o-mini) / Ollama (qwen2.5:72b) | 자연어 이해 및 도구 호출 결정 |
-| **MCP Server** | FastMCP | 36개 데이터 분석 도구 제공 |
+| **MCP Server** | FastMCP | 38개 데이터 분석 도구 제공 |
 | **Agent Framework** | LangGraph + LangChain | 대화 상태 관리 및 도구 실행 |
 | **Data Processing** | pandas, numpy, scikit-learn | 데이터 조작 및 ML 모델링 |
 | **Visualization** | matplotlib, seaborn, Plotly | 정적(PNG)·인터랙티브(HTML) 시각화 |
@@ -70,9 +70,9 @@ graph LR
 
 ---
 
-## MCP Server Tools (36 Total)
+## MCP Server Tools (38 Total)
 
-본 시스템은 **8개 모듈**로 구성된 36개의 전문가급 도구를 제공합니다.
+본 시스템은 **8개 모듈**로 구성된 38개의 전문가급 도구를 제공합니다.
 
 ### 📂 Module 1: Data Exploration & Profiling (4 tools) — `tools/exploration.py`
 
@@ -149,12 +149,17 @@ graph LR
 | `test_chi_square` | 카이제곱 독립성 검정 (범주형 변수) |
 | `calculate_confidence_interval` | 신뢰구간 계산 (평균값 추정) |
 
-### 💾 Module 8: Data Management (2 tools) — `tools/exploration.py`
+### 💾 Module 8: Data & Results Management (4 tools) — `tools/exploration.py`, `tools/results.py`
 
 | Tool | Description |
 |------|-------------|
 | `list_cached_datasets` | 현재 캐시된 데이터셋 목록 조회 |
 | `clear_cache` | 메모리 캐시 초기화 (특정 파일 또는 전체) |
+| `view_chart` | **생성된 차트를 대화창에 바로 표시** — PNG를 MCP 이미지 콘텐츠로 반환 (Claude Desktop 등 멀티모달 클라이언트에서 인라인 렌더링) |
+| `list_outputs` | 지금까지 생성된 결과 파일 목록 (최신순, 인라인 표시 가능 여부 포함) |
+
+> 동봉 CLI 클라이언트(`data_client.py`)는 텍스트 전용 로컬 LLM에서도 결과를 바로 볼 수 있도록,
+> 각 턴이 끝나면 새로 생성된 차트를 OS 기본 뷰어로 자동으로 엽니다 (`AUTO_OPEN_RESULTS=0`으로 비활성화).
 
 ---
 
@@ -177,6 +182,7 @@ Data-Analyze-MCP/
 │           ├── feature_engineering.py # 파생·다항·시계열 피처
 │           ├── visualization.py       # 정적/인터랙티브 시각화
 │           ├── auto_viz.py            # 시각화 자동 추천·렌더링
+│           ├── results.py             # 결과물 인라인 표시·목록
 │           ├── ml.py                  # 모델 비교·평가·튜닝
 │           └── statistics.py          # 상관·가설검정
 ├── data_client.py              # [UI] LangGraph 기반 대화형 클라이언트
@@ -371,7 +377,7 @@ AI: [monthly_charges에서 23개 이상치 발견]
 
 | Metric | Value |
 |--------|-------|
-| **도구 개수** | 36개 |
+| **도구 개수** | 38개 |
 | **캐싱 효과** | ~50% 속도 향상 (반복 작업 시) |
 | **응답 시간** | 2-5초 (Ollama GPU 사용 시) |
 | **메모리** | 최소 8GB RAM |
