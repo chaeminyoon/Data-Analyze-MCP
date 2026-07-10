@@ -3,12 +3,17 @@
 Configuration is read from environment variables so the same script works
 against OpenAI or a self-hosted Ollama instance without code edits:
 
-    LLM_BACKEND   "ollama" (default) | "openai"
-    MODEL_NAME    model id (default: qwen2.5:72b for ollama)
-    OLLAMA_URL    base url for the ollama server
+    LLM_BACKEND        "ollama" (default) | "openai"
+    MODEL_NAME         model id (default: qwen2.5:72b for ollama)
+    OLLAMA_URL         base url for the ollama server
+    AUTO_OPEN_RESULTS  "1" (default) opens newly generated charts in the OS
+                       default viewer after each turn; "0" disables
 """
 import asyncio
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -23,6 +28,8 @@ load_dotenv()
 LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama").lower()
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.2.209:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "qwen2.5:72b")
+AUTO_OPEN_RESULTS = os.getenv("AUTO_OPEN_RESULTS", "1") != "0"
+OUTPUT_DIR = Path(os.getenv("MCP_OUTPUT_DIR", "outputs"))
 
 # Launch the server package directly. Put ./src on PYTHONPATH so it runs from a
 # fresh checkout without `pip install`; an installed package works too.
@@ -31,6 +38,31 @@ _server_env = {**os.environ, "PYTHONPATH": os.pathsep.join([_SRC, os.environ.get
 server_params = StdioServerParameters(
     command="python", args=["-m", "data_analysis"], env=_server_env
 )
+
+
+def snapshot_outputs() -> dict:
+    """Map of result files -> mtime, used to detect charts created in a turn."""
+    if not OUTPUT_DIR.exists():
+        return {}
+    return {f: f.stat().st_mtime for f in OUTPUT_DIR.iterdir() if f.is_file()}
+
+
+def open_in_viewer(path: Path) -> None:
+    """Open a file with the OS default application (cross-platform)."""
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    elif os.name == "nt":
+        os.startfile(str(path))  # noqa: S606
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def open_new_outputs(before: dict) -> list[Path]:
+    """Open every result file created/updated since ``before``; return them."""
+    fresh = [f for f, mtime in snapshot_outputs().items() if before.get(f) != mtime]
+    for f in sorted(fresh):
+        open_in_viewer(f)
+    return fresh
 
 
 def build_model():
@@ -85,11 +117,17 @@ async def run() -> None:
                     conversation_history.append(HumanMessage(content=user_input))
                     print("\n🤔 분석 중...\n")
 
+                    before = snapshot_outputs()
                     response = await agent.ainvoke({"messages": conversation_history})
                     conversation_history = response["messages"]
 
                     print("=" * 60)
                     print("AI:", response["messages"][-1].content)
+                    if AUTO_OPEN_RESULTS:
+                        fresh = open_new_outputs(before)
+                        if fresh:
+                            names = ", ".join(f.name for f in fresh)
+                            print(f"\n📊 결과 파일을 열었습니다: {names}")
                     print("=" * 60 + "\n")
 
                 except (EOFError, KeyboardInterrupt):
