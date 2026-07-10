@@ -5,6 +5,7 @@ import pandas as pd
 
 from ..cache import cached, clear, get_data
 from ..config import HIGH_CORRELATION_THRESHOLD, PREVIEW_LIMIT
+from ..helpers import classify_columns
 from ..server import mcp
 
 
@@ -76,29 +77,21 @@ def profile_dataset(csv_path: str) -> dict:
 
 @mcp.tool()
 def detect_data_types(csv_path: str) -> dict:
-    """Auto-detect and classify column data types."""
+    """Auto-detect and classify column data types (with fine-grained roles)."""
     df = get_data(csv_path)
+    roles = classify_columns(df)
 
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    categorical_cols = []
-    datetime_cols = []
-    text_cols = []
-
-    for col in df.select_dtypes(include=["object"]).columns:
-        try:
-            parsed = pd.to_datetime(df[col], errors="coerce")
-            # Treat as datetime only if the bulk of non-null values parsed.
-            non_null = df[col].notna().sum()
-            if non_null and parsed.notna().sum() / non_null > 0.9:
-                datetime_cols.append(col)
-                continue
-        except (ValueError, TypeError):
-            pass
-
-        if len(df) and df[col].nunique() / len(df) < 0.5:
-            categorical_cols.append(col)
-        else:
-            text_cols.append(col)
+    object_cols = df.select_dtypes(include=["object"]).columns
+    datetime_cols = [
+        c for c, i in roles.items()
+        if i["role"] == "datetime" or pd.api.types.is_datetime64_any_dtype(df[c])
+    ]
+    categorical_cols = [
+        c for c in object_cols
+        if roles[c]["role"] in ("categorical", "high_cardinality", "constant")
+    ]
+    text_cols = [c for c in object_cols if roles[c]["role"] in ("text", "id")]
 
     return {
         "numeric_columns": numeric_cols,
@@ -106,6 +99,7 @@ def detect_data_types(csv_path: str) -> dict:
         "datetime_columns": datetime_cols,
         "text_columns": text_cols,
         "total_columns": len(df.columns),
+        "column_roles": {c: i["role"] for c, i in roles.items()},
     }
 
 

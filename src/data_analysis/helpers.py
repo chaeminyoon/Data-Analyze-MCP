@@ -6,6 +6,9 @@ classification-vs-regression detection).
 """
 from __future__ import annotations
 
+import re
+import warnings
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -56,6 +59,72 @@ def save_current_figure(filename: str) -> str:
         return path
     finally:
         plt.close()
+
+
+# --- [Column role classification] -------------------------------------------
+# Strings must look date-like (separators / time parts) before we even try
+# pd.to_datetime, so plain numbers like "10" are never treated as dates.
+_DATE_HINT = re.compile(r"\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|\d{4}[-/]\d{1,2}\b|\d{1,2}:\d{2}")
+_ID_NAME = re.compile(r"(^|[_\s])(id|uuid|key|code)s?$", re.IGNORECASE)
+
+
+def _mostly_datetime(series: pd.Series, threshold: float = 0.9) -> bool:
+    """True if a (sampled) object series parses as datetime for >=threshold."""
+    sample = series.dropna().astype(str).head(100)
+    if len(sample) == 0:
+        return False
+    if float(sample.str.contains(_DATE_HINT, regex=True).mean()) < threshold:
+        return False
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        parsed = pd.to_datetime(sample, errors="coerce")
+    return float(parsed.notna().mean()) >= threshold
+
+
+def classify_columns(df: pd.DataFrame) -> dict[str, dict]:
+    """Classify every column into a visualization/analysis role.
+
+    Roles: ``numeric`` (continuous), ``discrete`` (few-valued numeric),
+    ``categorical``, ``high_cardinality`` (categorical with many levels),
+    ``datetime``, ``id`` (unique per row / identifier-named), ``text``
+    (free-form strings), ``constant``, ``empty``.
+
+    Returns ``{column: {"role", "nunique", "missing_pct"}}``.
+    """
+    n = len(df)
+    out: dict[str, dict] = {}
+    for col in df.columns:
+        s = df[col]
+        nunique = int(s.nunique(dropna=True))
+        entry = {
+            "nunique": nunique,
+            "missing_pct": round(float(s.isna().mean()) * 100, 2) if n else 0.0,
+        }
+        if n == 0 or nunique == 0:
+            entry["role"] = "empty"
+        elif nunique == 1:
+            entry["role"] = "constant"
+        elif pd.api.types.is_datetime64_any_dtype(s):
+            entry["role"] = "datetime"
+        elif pd.api.types.is_bool_dtype(s):
+            entry["role"] = "categorical"
+        elif pd.api.types.is_numeric_dtype(s):
+            if _ID_NAME.search(str(col)) and nunique / n > 0.9:
+                entry["role"] = "id"
+            elif nunique <= 15:
+                entry["role"] = "discrete"
+            else:
+                entry["role"] = "numeric"
+        elif _mostly_datetime(s):
+            entry["role"] = "datetime"
+        elif nunique / n >= 0.95:
+            entry["role"] = "id"
+        elif nunique / n >= 0.5:
+            entry["role"] = "text"
+        else:
+            entry["role"] = "categorical" if nunique <= 50 else "high_cardinality"
+        out[col] = entry
+    return out
 
 
 # --- [ML task detection] ---------------------------------------------------

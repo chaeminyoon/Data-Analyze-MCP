@@ -4,6 +4,7 @@ Importing every submodule here registers all ``@mcp.tool()`` functions on the
 shared server instance.
 """
 from . import (  # noqa: F401  (imported for @mcp.tool registration side effects)
+    auto_viz,
     exploration,
     feature_engineering,
     ml,

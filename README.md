@@ -4,13 +4,13 @@
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green.svg)
 ![Ollama](https://img.shields.io/badge/Ollama-Qwen3--70B-ff7a18?style=flat&logo=ollama&logoColor=white)
 
-**32개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
+**36개의 전문가급 데이터 분석 도구**를 제공하는 MCP(Model Context Protocol) 기반 데이터 분석 시스템. OpenAI 및 Ollama 모델을 지원하며, 대화형 인터페이스를 통해 즉각적인 데이터 분석을 수행합니다.
 
 ---
 
 ## System Architecture
 
-본 시스템은 **MCP 프로토콜**을 기반으로 LLM 에이전트가 32개의 데이터 분석 도구를 자동으로 호출하여 탐색, 전처리, 시각화, 모델링, 통계 분석을 수행합니다.
+본 시스템은 **MCP 프로토콜**을 기반으로 LLM 에이전트가 36개의 데이터 분석 도구를 자동으로 호출하여 탐색, 전처리, 시각화, 모델링, 통계 분석을 수행합니다.
 
 ```mermaid
 graph LR
@@ -31,7 +31,7 @@ graph LR
     LLM[LLM Engine<br/>OpenAI/Ollama]
     
     subgraph MCPLayer [MCP Server Layer]
-        Server[FastMCP Server<br/>32 Tools]
+        Server[FastMCP Server<br/>36 Tools]
         Cache[Smart<br/>Cache]
     end
     
@@ -58,17 +58,17 @@ graph LR
 | Component | Technology | Role |
 |-----------|-----------|------|
 | **LLM** | OpenAI (gpt-4o-mini) / Ollama (qwen2.5:72b) | 자연어 이해 및 도구 호출 결정 |
-| **MCP Server** | FastMCP | 32개 데이터 분석 도구 제공 |
+| **MCP Server** | FastMCP | 36개 데이터 분석 도구 제공 |
 | **Agent Framework** | LangGraph + LangChain | 대화 상태 관리 및 도구 실행 |
 | **Data Processing** | pandas, numpy, scikit-learn | 데이터 조작 및 ML 모델링 |
-| **Visualization** | matplotlib, seaborn | 정적 시각화 (향후 Plotly 지원) |
+| **Visualization** | matplotlib, seaborn, Plotly | 정적(PNG)·인터랙티브(HTML) 시각화 |
 | **Caching** | In-memory Dictionary | 스마트 캐싱으로 50% 성능 향상 |
 
 ---
 
-## MCP Server Tools (32 Total)
+## MCP Server Tools (36 Total)
 
-본 시스템은 **7개 모듈**로 구성된 32개의 전문가급 도구를 제공합니다.
+본 시스템은 **8개 모듈**로 구성된 36개의 전문가급 도구를 제공합니다.
 
 ### 📂 Module 1: Data Exploration & Profiling (4 tools) — `tools/exploration.py`
 
@@ -97,13 +97,15 @@ graph LR
 | `create_polynomial_features` | 다항·교호작용 피처 생성 |
 | `extract_datetime_features` | 날짜/시간 피처 추출 (year, month, dayofweek 등) |
 
-### 📊 Module 4: Visualization (9 tools) — `tools/visualization.py`
+### 📊 Module 4: Visualization (11 tools) — `tools/visualization.py`
 
 | Tool | Description |
 |------|-------------|
 | `plot_histogram` | 히스토그램 (bins, KDE, 색상, 레전드 커스터마이징) |
 | `plot_boxplot` | 박스플롯 (이상치 시각화) |
 | `plot_scatter` | 산점도 (레전드, 마커 크기, 투명도, 색상 팔레트) |
+| `plot_line` | 라인 차트 — 시계열 트렌드 (그룹별 다중 라인, 리샘플링, `interactive` 지원) |
+| `plot_bar` | 막대 차트 — 범주 빈도 또는 집계값 (top_n, `interactive` 지원) |
 | `plot_correlation_heatmap` | 상관관계 히트맵 |
 | `analyze_target_distribution` | 타겟 변수 분포 분석 및 불균형 탐지 |
 | `plot_interactive_scatter` | 인터랙티브 산점도 (Plotly HTML) |
@@ -111,7 +113,20 @@ graph LR
 | `plot_interactive_boxplot` | 인터랙티브 박스플롯 (Plotly HTML) |
 | `plot_interactive_heatmap` | 인터랙티브 상관관계 히트맵 (Plotly HTML) |
 
-### 🤖 Module 5: Machine Learning (3 tools) — `tools/ml.py`
+### 🧭 Module 5: Auto Visualization (2 tools) — `tools/auto_viz.py`
+
+**어떤 데이터를 넣어도** 컬럼 역할(수치/이산/범주/날짜/ID/텍스트)을 자동 판별해
+알맞은 시각화를 추천하고, 추천된 방법으로 결과물을 바로 생성합니다.
+
+| Tool | Description |
+|------|-------------|
+| `recommend_visualizations` | 데이터 자동 분석 → 근거 있는 차트 추천 목록 + 실행 가능한 tool_call 반환 |
+| `plot_auto` | 컬럼 1~3개(또는 생략)만 주면 역할 조합으로 차트 자동 선택·렌더링 (`interactive` 지원) |
+
+**차트 선택 규칙:** 수치→히스토그램 · 범주→막대 · 수치×수치→산점도 · 수치×범주→박스플롯 ·
+날짜×수치→라인 · 범주×범주→교차표 히트맵 · +범주 1개→hue/그룹 분리
+
+### 🤖 Module 6: Machine Learning (3 tools) — `tools/ml.py`
 
 | Tool | Description |
 |------|-------------|
@@ -119,7 +134,7 @@ graph LR
 | `evaluate_model` | Confusion Matrix, Feature Importance, 상세 메트릭 평가 |
 | `tune_hyperparameters` | GridSearchCV / RandomizedSearchCV 하이퍼파라미터 튜닝 |
 
-### 📐 Module 6: Statistical Analysis (6 tools) — `tools/statistics.py`
+### 📐 Module 7: Statistical Analysis (6 tools) — `tools/statistics.py`
 
 | Tool | Description |
 |------|-------------|
@@ -130,7 +145,7 @@ graph LR
 | `test_chi_square` | 카이제곱 독립성 검정 (범주형 변수) |
 | `calculate_confidence_interval` | 신뢰구간 계산 (평균값 추정) |
 
-### 💾 Module 7: Data Management (2 tools) — `tools/exploration.py`
+### 💾 Module 8: Data Management (2 tools) — `tools/exploration.py`
 
 | Tool | Description |
 |------|-------------|
@@ -157,6 +172,7 @@ Data-Analyze-MCP/
 │           ├── preprocessing.py       # 결측치·이상치·인코딩·스케일링
 │           ├── feature_engineering.py # 파생·다항·시계열 피처
 │           ├── visualization.py       # 정적/인터랙티브 시각화
+│           ├── auto_viz.py            # 시각화 자동 추천·렌더링
 │           ├── ml.py                  # 모델 비교·평가·튜닝
 │           └── statistics.py          # 상관·가설검정
 ├── data_client.py              # [UI] LangGraph 기반 대화형 클라이언트
@@ -351,7 +367,7 @@ AI: [monthly_charges에서 23개 이상치 발견]
 
 | Metric | Value |
 |--------|-------|
-| **도구 개수** | 32개 |
+| **도구 개수** | 36개 |
 | **캐싱 효과** | ~50% 속도 향상 (반복 작업 시) |
 | **응답 시간** | 2-5초 (Ollama GPU 사용 시) |
 | **메모리** | 최소 8GB RAM |
