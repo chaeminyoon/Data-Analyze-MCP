@@ -11,5 +11,6 @@ from . import (  # noqa: F401  (imported for @mcp.tool registration side effects
     preprocessing,
     results,
     statistics,
+    style,
     visualization,
 )
