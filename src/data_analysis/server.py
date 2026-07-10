@@ -7,6 +7,9 @@ effects before calling ``mcp.run()``.
 """
 from mcp.server.fastmcp import FastMCP
 
+from . import config, theming
 from . import fonts  # noqa: F401  (configures matplotlib on import)
+
+theming.apply(config.CHART_THEME)
 
 mcp = FastMCP("DataAnalysis")

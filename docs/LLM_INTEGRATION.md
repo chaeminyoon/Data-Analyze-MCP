@@ -36,31 +36,24 @@ LLM은 돌아온 JSON을 읽고 한국어로 해석해 줄 뿐입니다.
 }
 ```
 
-등록하면 Claude가 36개 툴을 자동 인식하고, "이 CSV 분석해줘" 같은 요청에서
+등록하면 Claude가 툴 전체를 자동 인식하고, "이 CSV 분석해줘" 같은 요청에서
 스스로 툴을 선택해 호출합니다. (`pip install -e .` 했다면 PYTHONPATH 불필요)
 
 ### B. OpenAI API (동봉된 LangGraph 클라이언트)
 
 ```bash
-export LLM_BACKEND=openai MODEL_NAME=gpt-4o-mini OPENAI_API_KEY=sk-...
+export MODEL_NAME=gpt-4o-mini OPENAI_API_KEY=sk-...
 python data_client.py
 ```
 
-### C. 로컬 LLM — Ollama (기본값)
-
-```bash
-export LLM_BACKEND=ollama MODEL_NAME=qwen2.5:72b OLLAMA_URL=http://localhost:11434
-python data_client.py
-```
-
-세 경우 모두 LLM 쪽에는 아무 차이가 없습니다 — MCP가 툴 스키마를 표준 형식으로
-노출하므로, 툴 호출을 지원하는 LLM이면 무엇이든 동일하게 동작합니다.
+어느 경우든 LLM 쪽에는 아무 차이가 없습니다 — MCP가 툴 스키마를 표준 형식으로
+노출하므로, 툴 호출을 지원하는 LLM/클라이언트라면 무엇이든 동일하게 동작합니다.
 
 ---
 
 ## 2. 와이어 프로토콜: 실제로 오가는 JSON
 
-연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 툴 36개의
+연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 등록된 툴 전체(현재 40개)의
 이름·설명·JSON 스키마를 반환합니다. 이후 툴 호출은 JSON-RPC `tools/call`입니다:
 
 ```json
@@ -93,7 +86,7 @@ python data_client.py
 
 ## 3. 실측 세션: 4턴 데이터 분석 대화
 
-> 환경: 서버 `DataAnalysis` (툴 36개) · 데이터 `customer_churn.csv` (7,043행)
+> 환경: 서버 `DataAnalysis` · 데이터 `customer_churn.csv` (7,043행)
 > 아래 모든 `result`는 서버가 실제 반환한 값입니다.
 
 ### 턴 1 — 데이터 파악
@@ -247,7 +240,7 @@ matrix와 피처 중요도를 확인해 보시겠어요?"
 | **파일 결과물** | 차트 툴은 파일 경로(문자열)를 반환 — PNG/HTML은 `MCP_OUTPUT_DIR`에 생성 |
 | **에러 처리** | 잘못된 입력은 `isError: true` + 명확한 메시지로 반환 → LLM이 읽고 스스로 수정 (예: "Column 'x' must be numeric" → 다른 컬럼으로 재시도) |
 | **대화 맥락** | 전처리 툴(`remove_outliers` 등)은 캐시를 갱신하므로 "이제 이상치 제거하고 다시 그려줘" 같은 연쇄 요청이 자연스럽게 이어짐 |
-| **모델 독립성** | Claude, GPT, Qwen(로컬) 어디에 붙여도 동일 — MCP가 툴 스키마를 표준화 |
+| **모델 독립성** | Claude, GPT 등 툴 호출을 지원하는 어떤 LLM에 붙여도 동일 — MCP가 툴 스키마를 표준화 |
 
 ## 5. 이 세션 재현하기
 
