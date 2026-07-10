@@ -32,6 +32,9 @@ Thumbs.db
 *.html
 *.pdf
 
+# ...but keep README/docs assets
+!docs/images/*.png
+
 # Model files
 *.h5
 *.pkl
