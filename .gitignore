@@ -39,6 +39,9 @@ Thumbs.db
 *.pt
 *.pth
 
+# Generated artifacts (plots, exported CSVs, HTML)
+outputs/
+
 # Logs
 *.log
 
