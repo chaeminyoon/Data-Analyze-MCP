@@ -13,6 +13,7 @@ import pandas as pd
 import plotly.express as px
 import seaborn as sns
 
+from .. import theming
 from ..cache import get_data
 from ..helpers import classify_columns, output_path, require_columns, safe_name, save_current_figure
 from ..server import mcp
@@ -182,7 +183,8 @@ def _plot_crosstab(df, a, b, interactive, title):
     ct = pd.crosstab(df[a], df[b])
     chart_title = title or f"Counts: {a} × {b}"
     if interactive:
-        fig = px.imshow(ct, text_auto=True, aspect="auto", title=chart_title)
+        fig = px.imshow(ct, text_auto=True, aspect="auto", title=chart_title,
+                        template=theming.plotly_template())
         path = output_path(f"crosstab_{safe_name(a)}_{safe_name(b)}.html")
         fig.write_html(path)
         return path

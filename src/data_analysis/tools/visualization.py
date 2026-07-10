@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import seaborn as sns
 
+from .. import theming
 from ..cache import get_data
 from ..helpers import output_path, require_columns, safe_name, save_current_figure
 from ..server import mcp
@@ -21,7 +22,7 @@ def plot_histogram(
     title: str = None,
     xlabel: str = None,
     ylabel: str = None,
-    color: str = "skyblue",
+    color: str = None,
     figsize_width: int = 8,
     figsize_height: int = 6,
     alpha: float = 0.6,
@@ -39,7 +40,7 @@ def plot_histogram(
             bins=bins,
             kde=kde,
             stat="density",
-            edgecolor="black",
+            edgecolor=theming.face_color(),
             alpha=alpha,
             color=color,
             label=legend_label or column,
@@ -65,7 +66,7 @@ def plot_boxplot(
     ylabel: str = None,
     figsize_width: int = 10,
     figsize_height: int = 6,
-    color: str = "skyblue",
+    color: str = None,
     alpha: float = 0.6,
     show_legend: bool = False,
     legend_label: str = None,
@@ -79,7 +80,7 @@ def plot_boxplot(
         if by_column:
             sns.boxplot(
                 data=df, x=by_column, y=column, hue=by_column,
-                legend=show_legend, palette="Set2",
+                legend=show_legend, palette=theming.palette(),
             )
             plt.title(title or f"Boxplot of {column} by {by_column}")
             plt.xlabel(xlabel or by_column)
@@ -115,7 +116,7 @@ def plot_scatter(
     figsize_height: int = 6,
     marker_size: int = 50,
     alpha: float = 0.6,
-    color_palette: str = "husl",
+    color_palette: str = None,
     show_legend: bool = True,
     legend_title: str = None,
     legend_position: str = "best",
@@ -261,7 +262,7 @@ def plot_line(
         if interactive:
             fig = px.line(
                 data, x=x_column, y=y_column, color=group_column,
-                title=title or f"{y_column} over {x_column}", template="plotly_white",
+                title=title or f"{y_column} over {x_column}", **theming.plotly_kwargs(),
             )
             path = output_path(f"{base}.html")
             fig.write_html(path)
@@ -331,7 +332,7 @@ def plot_bar(
         if interactive:
             plot_df = data.rename(ylabel).reset_index()
             fig = px.bar(
-                plot_df, x=column, y=ylabel, title=chart_title, template="plotly_white",
+                plot_df, x=column, y=ylabel, title=chart_title, **theming.plotly_kwargs(),
             )
             path = output_path(f"{base}.html")
             fig.write_html(path)
@@ -372,7 +373,7 @@ def plot_interactive_scatter(
             df, x=x_column, y=y_column, color=color_column, size=size_column,
             hover_name=hover_name,
             title=title or f"Interactive Scatter: {x_column} vs {y_column}",
-            template="plotly_white",
+            **theming.plotly_kwargs(),
         )
         path = output_path(
             f"interactive_scatter_{safe_name(x_column)}_vs_{safe_name(y_column)}.html"
@@ -399,7 +400,7 @@ def plot_interactive_histogram(
         fig = px.histogram(
             df, x=column, color=color_column, nbins=bins,
             title=title or f"Interactive Histogram: {column}",
-            template="plotly_white", marginal="box",
+            **theming.plotly_kwargs(), marginal="box",
         )
         path = output_path(f"interactive_hist_{safe_name(column)}.html")
         fig.write_html(path)
@@ -424,7 +425,7 @@ def plot_interactive_boxplot(
         fig = px.box(
             df, y=y_column, x=x_column, color=color_column,
             title=title or f"Interactive Boxplot: {y_column}",
-            template="plotly_white", points="outliers",
+            **theming.plotly_kwargs(), points="outliers",
         )
         path = output_path(f"interactive_boxplot_{safe_name(y_column)}.html")
         fig.write_html(path)
@@ -446,6 +447,7 @@ def plot_interactive_heatmap(csv_path: str, method: str = "pearson", title: str 
             numeric_df.corr(method=method), text_auto=True, aspect="auto",
             title=title or f"Interactive Correlation Heatmap ({method})",
             color_continuous_scale="RdBu_r", zmin=-1, zmax=1,
+            template=theming.plotly_template(),
         )
         path = output_path("interactive_heatmap.html")
         fig.write_html(path)
