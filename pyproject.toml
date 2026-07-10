@@ -12,6 +12,7 @@ dynamic = ["dependencies"]
 
 [project.scripts]
 data-analysis = "data_analysis.__main__:main"
+data-analysis-viewer = "data_analysis.viewer:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
