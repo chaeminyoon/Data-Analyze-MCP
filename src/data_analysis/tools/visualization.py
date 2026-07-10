@@ -238,7 +238,8 @@ def plot_line(
         raise ValueError(f"Column '{y_column}' must be numeric.")
 
     # Auto-convert date-like string x-axes so CSV dates plot chronologically.
-    if df[x_column].dtype == object:
+    # (dtype-agnostic check: pandas 3 uses 'str' dtype, not 'object', for strings)
+    if not pd.api.types.is_datetime64_any_dtype(df[x_column]) and not pd.api.types.is_numeric_dtype(df[x_column]):
         converted = pd.to_datetime(df[x_column], errors="coerce", format="mixed")
         if converted.notna().mean() > 0.9:
             df[x_column] = converted
@@ -255,6 +256,8 @@ def plot_line(
         data = data.sort_values(x_column)
 
         base = f"line_{safe_name(y_column)}_over_{safe_name(x_column)}"
+        if group_column:
+            base += f"_by_{safe_name(group_column)}"
         if interactive:
             fig = px.line(
                 data, x=x_column, y=y_column, color=group_column,

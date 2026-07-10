@@ -135,6 +135,7 @@ def is_classification_target(y: pd.Series) -> bool:
     most ``config.CLASSIFICATION_MAX_UNIQUE`` distinct values are treated as
     classification too.  Centralising this keeps every ML tool consistent.
     """
-    if y.dtype == "object" or isinstance(y.dtype, pd.CategoricalDtype):
+    # dtype-agnostic: pandas 3 strings are 'str' dtype, not 'object'
+    if not pd.api.types.is_numeric_dtype(y):
         return True
     return y.nunique() <= config.CLASSIFICATION_MAX_UNIQUE
