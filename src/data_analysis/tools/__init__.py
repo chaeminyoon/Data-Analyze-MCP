@@ -9,6 +9,7 @@ from . import (  # noqa: F401  (imported for @mcp.tool registration side effects
     feature_engineering,
     ml,
     preprocessing,
+    results,
     statistics,
     visualization,
 )
