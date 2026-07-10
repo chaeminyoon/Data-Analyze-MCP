@@ -209,6 +209,83 @@ def analyze_target_distribution(csv_path: str, target_column: str) -> dict:
 
 
 @mcp.tool()
+def plot_before_after(
+    csv_path: str,
+    column: str,
+    chart: str = "histogram",
+    bins: int = 30,
+    title: str = None,
+    figsize_width: int = 14,
+    figsize_height: int = 6,
+) -> str:
+    """Compare a column BEFORE vs AFTER preprocessing in one side-by-side figure.
+
+    'Before' is the original CSV as it exists on disk; 'after' is the current
+    in-memory state (reflecting remove_outliers, handle_missing_values,
+    scale_features, ...). Call this right after a preprocessing step to show
+    the user what changed in a single image.
+
+    Args:
+        chart: 'histogram' (shared bins/axis for fair comparison) or 'boxplot'.
+    """
+    if chart not in ("histogram", "boxplot"):
+        raise ValueError("chart must be 'histogram' or 'boxplot'.")
+
+    original = pd.read_csv(csv_path)  # disk state, bypassing the cache
+    current = get_data(csv_path)
+    for df in (original, current):
+        require_columns(df, column)
+        if not pd.api.types.is_numeric_dtype(df[column]):
+            raise ValueError(f"Column '{column}' must be numeric.")
+
+    before = original[column].dropna()
+    after = current[column].dropna()
+    unchanged = len(before) == len(after) and before.reset_index(drop=True).equals(
+        after.reset_index(drop=True)
+    )
+
+    before_color = "#9aa5b5"          # muted: the past
+    after_color = theming.palette()[0]  # theme primary: the result
+
+    fig, axes = plt.subplots(
+        1, 2, figsize=(figsize_width, figsize_height), sharey=True
+    )
+    try:
+        if chart == "histogram":
+            # Shared bin edges + x-range so the two panels are truly comparable.
+            lo = float(min(before.min(), after.min()))
+            hi = float(max(before.max(), after.max()))
+            edges = np.linspace(lo, hi, bins + 1)
+            axes[0].hist(before, bins=edges, color=before_color, edgecolor=theming.face_color())
+            axes[1].hist(after, bins=edges, color=after_color, edgecolor=theming.face_color())
+            for ax in axes:
+                ax.set_xlim(lo, hi)
+                ax.set_xlabel(column)
+            axes[0].set_ylabel("Count")
+        else:  # boxplot
+            sns.boxplot(y=before, ax=axes[0], color=before_color)
+            sns.boxplot(y=after, ax=axes[1], color=after_color)
+            axes[0].set_ylabel(column)
+            axes[1].set_ylabel("")
+
+        axes[0].set_title(f"Before — {len(before):,} rows")
+        axes[1].set_title(f"After — {len(after):,} rows")
+
+        suptitle = title or f"{column}: 전처리 전/후 비교"
+        if unchanged:
+            suptitle += " (변경 사항 없음)"
+        fig.suptitle(suptitle, fontsize=14, fontweight="bold")
+        # NOTE: tight_layout(rect=...) crashes on sharey boxplot axes
+        # (matplotlib 3.11 draw-time NaN); subplots_adjust + bbox_inches="tight"
+        # in save_current_figure gives the same result safely.
+        fig.subplots_adjust(top=0.86)
+        return save_current_figure(f"before_after_{safe_name(column)}.png")
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
 def plot_line(
     csv_path: str,
     x_column: str,
