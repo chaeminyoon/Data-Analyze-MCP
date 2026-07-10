@@ -53,7 +53,7 @@ python data_client.py
 
 ## 2. 와이어 프로토콜: 실제로 오가는 JSON
 
-연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 등록된 툴 전체(현재 40개)의
+연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 등록된 툴 전체(현재 41개)의
 이름·설명·JSON 스키마를 반환합니다. 이후 툴 호출은 JSON-RPC `tools/call`입니다:
 
 ```json
@@ -84,151 +84,155 @@ python data_client.py
 
 ---
 
-## 3. 실측 세션: 4턴 데이터 분석 대화
+## 3. 실측 세션: 분석 → 처리 → 시각화 (4턴)
 
-> 환경: 서버 `DataAnalysis` · 데이터 `customer_churn.csv` (7,043행)
+> 환경: 서버 `DataAnalysis` (41 tools) · 데이터 `house_price.csv` (545행)
 > 아래 모든 `result`는 서버가 실제 반환한 값입니다.
 
-### 턴 1 — 데이터 파악
+### 턴 1 — 분석: 데이터 파악
 
-**사용자:** `customer_churn.csv 데이터 분석해줘`
+**사용자:** `house_price.csv 분석해줘`
 
-**LLM의 판단:** 구체적 지시가 없는 '분석' 요청 → 프로파일링부터 시작 (시스템 프롬프트 규칙)
+**LLM의 판단:** 구체적 지시가 없는 '분석' 요청 → 기본 정보 + 핵심 수치 컬럼의 이상치 점검
 
 ```json
 → tools/call: get_dataset_info
-{ "csv_path": "customer_churn.csv" }
+{ "csv_path": "house_price.csv" }
 ```
 
 ```json
 ← result
 {
-  "filename": "customer_churn.csv",
-  "shape": [7043, 12],
-  "columns": ["gender", "senior_citizen", "partner", "dependents", "tenure",
-              "phone_service", "internet_service", "contract_type",
-              "payment_method", "monthly_charges", "total_charges", "churn"],
-  "dtypes": { "tenure": "int64", "monthly_charges": "float64", "churn": "str", "...": "..." },
-  "missing_values": { "gender": 0, "tenure": 0, "...": 0 }
+  "filename": "house_price.csv",
+  "shape": [545, 12],
+  "columns": ["area", "bedrooms", "bathrooms", "stories", "parking",
+              "mainroad", "guestroom", "basement", "hotwaterheating",
+              "airconditioning", "furnishingstatus", "price"],
+  "dtypes": { "area": "int64", "price": "int64", "furnishingstatus": "str", "...": "..." },
+  "missing_values": { "area": 0, "price": 0, "...": 0 }
 }
 ```
 
-**LLM 답변:** "7,043행 × 12컬럼의 통신사 고객 데이터입니다. 수치형 4개(tenure,
-monthly_charges 등), 범주형 8개이며 결측치는 없습니다. 타깃으로 보이는 `churn`
-컬럼이 있어 이탈 분석에 적합합니다."
-
-### 턴 2 — 시각화 추천 + 렌더링 (auto-viz 파이프라인)
-
-**사용자:** `이 데이터에 어떤 시각화가 좋을지 추천하고, 제일 좋은 걸로 그려줘`
-
-**LLM의 판단:** 차트 종류 미지정 → `recommend_visualizations` 먼저, 그 다음 `plot_auto`
-
 ```json
-→ tools/call: recommend_visualizations
-{ "csv_path": "customer_churn.csv", "target_column": "churn" }
+→ tools/call: detect_outliers
+{ "csv_path": "house_price.csv", "column": "price" }
 ```
 
 ```json
 ← result (일부)
 {
-  "column_roles": { "tenure": "numeric", "contract_type": "categorical",
-                    "churn": "categorical", "...": "..." },
+  "outlier_count": 34,
+  "outlier_percentage": 6.24,
+  "outlier_values": [2653482, 2507725, 1953679, "..."],
+  "lower_bound": 212358.5,
+  "upper_bound": 1314170.5,
+  "method": "iqr"
+}
+```
+
+**LLM 답변:** "545행 × 12컬럼의 주택 가격 데이터입니다. 결측치는 없지만
+`price`에서 IQR 기준 이상치 34개(6.2%)가 탐지됩니다 — 상한 131만을 크게
+넘는 고가 주택들입니다. 분석 전에 제거할지 결정하세요."
+
+### 턴 2 — 처리: 이상치 제거
+
+**사용자:** `price 이상치를 제거해줘`
+
+```json
+→ tools/call: remove_outliers
+{ "csv_path": "house_price.csv", "column": "price" }
+```
+
+```json
+← result
+{
+  "rows_removed": 34,
+  "original_shape": [545, 12],
+  "new_shape": [511, 12],
+  "method": "iqr"
+}
+```
+
+**LLM 답변:** "34행을 제거해 511행이 되었습니다. 캐시가 갱신되어 이후
+분석·시각화는 정제된 데이터 기준으로 수행됩니다."
+
+### 턴 3 — 전/후 비교를 한 장으로
+
+**사용자:** `처리 전후를 한 장으로 비교해서 보여줘`
+
+**LLM의 판단:** 전처리 직후의 비교 요청 → `plot_before_after` (디스크의 원본 vs
+캐시의 처리본을 같은 축으로 나란히) → `view_chart`로 인라인 표시
+
+```json
+→ tools/call: plot_before_after
+{ "csv_path": "house_price.csv", "column": "price" }
+```
+
+```json
+← result
+".../outputs/before_after_price.png"
+```
+
+```json
+→ tools/call: view_chart
+{ "file_path": "before_after_price.png" }
+```
+
+```
+← result (MCP 이미지 콘텐츠)
+[image content: image/png, 35732 base64 chars — 클라이언트가 대화창에 인라인 렌더링]
+```
+
+**LLM 답변:** "왼쪽(제거 전, 545행)에는 130만 이상의 이상치 꼬리가 보이지만
+오른쪽(제거 후, 511행)에서는 사라졌습니다. 두 패널은 같은 축을 공유하므로
+분포 변화를 그대로 비교할 수 있습니다." (차트가 대화창에 표시됨)
+
+### 턴 4 — 시각화: 정제된 데이터로 자동 추천
+
+**사용자:** `이제 어떤 시각화가 좋을지 추천하고 제일 좋은 걸로 그려줘`
+
+```json
+→ tools/call: recommend_visualizations
+{ "csv_path": "house_price.csv" }
+```
+
+```json
+← result (일부)
+{
+  "column_roles": { "area": "numeric", "price": "numeric",
+                    "bedrooms": "discrete", "furnishingstatus": "categorical", "...": "..." },
   "recommendations": [
-    { "chart": "target_distribution", "columns": ["churn"],
-      "reason": "Class balance of target 'churn' — checks for imbalance before modeling",
-      "tool_call": { "tool": "analyze_target_distribution",
-                     "params": { "csv_path": "customer_churn.csv", "target_column": "churn" } } },
-    { "chart": "boxplot", "columns": ["tenure", "churn"],
-      "reason": "How 'tenure' differs across 'churn' classes",
-      "tool_call": { "tool": "plot_boxplot", "params": { "...": "..." } } },
-    { "chart": "scatter", "columns": ["tenure", "total_charges", "gender"],
-      "reason": "Strongest numeric relationship (|r|=0.77): 'tenure' vs 'total_charges'",
-      "tool_call": { "tool": "plot_scatter", "params": { "...": "..." } } }
-  ],
-  "skipped_columns": [],
-  "hint": "Render any recommendation via plot_auto(...) or by calling rec['tool_call'] directly."
+    { "chart": "scatter", "columns": ["area", "price", "bedrooms"],
+      "reason": "Strongest numeric relationship (|r|=0.80): 'area' vs 'price'",
+      "tool_call": { "tool": "plot_scatter",
+                     "params": { "csv_path": "house_price.csv", "x_column": "area",
+                                 "y_column": "price", "hue_column": "bedrooms" } } },
+    { "chart": "boxplot", "columns": ["area", "bedrooms"], "...": "..." }
+  ]
 }
 ```
 
 ```json
 → tools/call: plot_auto
-{ "csv_path": "customer_churn.csv", "target_column": "churn" }
+{ "csv_path": "house_price.csv" }
 ```
 
 ```json
 ← result (일부)
 {
-  "chart": "target_distribution",
-  "columns": ["churn"],
-  "reason": "Class balance of target 'churn' — checks for imbalance before modeling",
-  "output_path": ".../outputs/target_distribution_churn.png",
-  "alternatives": [ { "chart": "boxplot", "columns": ["tenure", "churn"], "...": "..." } ]
+  "chart": "scatter",
+  "columns": ["area", "price", "bedrooms"],
+  "reason": "Strongest numeric relationship (|r|=0.80): 'area' vs 'price'",
+  "output_path": ".../outputs/scatter_area_vs_price.png"
 }
 ```
 
-**LLM 답변:** "서버가 8가지 시각화를 추천했고, 1순위인 **타깃 분포 차트**를
-생성했습니다 (`target_distribution_churn.png`). 모델링 전 클래스 불균형을
-확인하기 위함입니다. 다음 후보로는 이탈 여부별 tenure 박스플롯, tenure-총요금
-산점도(상관 0.77)가 있습니다."
+**LLM 답변:** "정제된 데이터에서는 area-price 상관이 |r|=0.80으로 가장
+강합니다 (제거 전에는 이상치 때문에 0.33에 불과했습니다). 산점도를 생성했고
+bedrooms로 색을 구분했습니다."
 
-### 턴 3 — 통계 검정
-
-**사용자:** `계약 유형별로 월 요금에 유의한 차이가 있는지 검정해줘`
-
-**LLM의 판단:** 수치형 1개 × 3개 그룹 비교 → 일원 ANOVA
-
-```json
-→ tools/call: test_anova
-{ "csv_path": "customer_churn.csv",
-  "column": "monthly_charges", "group_column": "contract_type" }
-```
-
-```json
-← result
-{
-  "column": "monthly_charges", "group_column": "contract_type",
-  "num_groups": 3, "test": "One-Way ANOVA",
-  "statistic": 241.4065, "p_value": 0.0,
-  "is_significant": "True", "alpha": 0.05,
-  "interpretation": "At least one group mean is significantly different"
-}
-```
-
-**LLM 답변:** "계약 유형(3그룹)에 따라 월 요금에 **통계적으로 유의한 차이**가
-있습니다 (F=241.41, p<0.001). 월 단위 계약 고객이 약정 할인 없이 더 높은
-요금을 내는 패턴입니다."
-
-### 턴 4 — 머신러닝 모델 비교
-
-**사용자:** `churn을 예측하는 모델들을 비교해줘`
-
-**LLM의 판단:** 턴 1~3에서 파악한 유의미한 피처들을 선택해 분류 모델 비교
-
-```json
-→ tools/call: compare_models
-{ "csv_path": "customer_churn.csv", "target_column": "churn",
-  "feature_columns": ["tenure", "contract_type", "monthly_charges",
-                      "payment_method", "senior_citizen"] }
-```
-
-```json
-← result
-{
-  "task_type": "classification",
-  "models": {
-    "RandomForest":       { "score": 0.6494, "metric": "accuracy" },
-    "LogisticRegression": { "score": 0.6671, "metric": "accuracy" },
-    "XGBoost":            { "score": 0.6593, "metric": "accuracy" }
-  },
-  "best_model": "LogisticRegression",
-  "best_score": 0.6671
-}
-```
-
-**LLM 답변:** "3개 모델을 비교한 결과 **LogisticRegression이 정확도 66.7%로
-최고**입니다 (XGBoost 65.9%, RandomForest 64.9%). 선형 모델이 가장 좋다는 건
-피처-이탈 관계가 비교적 단순하다는 신호입니다. `evaluate_model`로 confusion
-matrix와 피처 중요도를 확인해 보시겠어요?"
+> 턴 2의 전처리가 턴 4의 시각화를 바꿉니다 — 이상치 제거만으로 상관계수가
+> 0.33 → 0.80으로 올라간 것이 추천 이유(reason)에 그대로 반영됩니다.
 
 ---
 
@@ -246,6 +250,6 @@ matrix와 피처 중요도를 확인해 보시겠어요?"
 
 ```bash
 pip install -e .
-python generate_all_test_data.py          # customer_churn.csv 생성
+python generate_all_test_data.py          # house_price.csv 등 생성
 python examples/demo_session.py           # 위 4턴을 그대로 재실행, JSON 로그 출력
 ```

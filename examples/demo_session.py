@@ -1,8 +1,9 @@
-"""Replay the 4-turn LLM↔MCP session documented in docs/LLM_INTEGRATION.md.
+"""Replay the analysis -> preprocessing -> visualization session from
+docs/LLM_INTEGRATION.md.
 
 This script plays the LLM's role with scripted tool decisions, so you can see
-the exact MCP inputs/outputs without needing an API key or a local model.
-Run from the repository root (after `python generate_all_test_data.py`):
+the exact MCP inputs/outputs without needing an API key. Run from the
+repository root (after `python generate_all_test_data.py`):
 
     python examples/demo_session.py
 """
@@ -15,7 +16,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CSV = "customer_churn.csv"
+CSV = "house_price.csv"
 
 env = {
     **os.environ,
@@ -28,54 +29,50 @@ server = StdioServerParameters(
 )
 
 # (user message, [(tool, arguments), ...]) — the decisions a tool-calling LLM
-# would make for each turn.
+# would make for each turn: 분석 -> 처리 -> 전후 비교 -> 시각화.
 TURNS = [
     (
-        "customer_churn.csv 데이터 분석해줘",
-        [("get_dataset_info", {"csv_path": CSV})],
-    ),
-    (
-        "이 데이터에 어떤 시각화가 좋을지 추천하고, 제일 좋은 걸로 그려줘",
+        "house_price.csv 분석해줘",
         [
-            ("recommend_visualizations", {"csv_path": CSV, "target_column": "churn"}),
-            ("plot_auto", {"csv_path": CSV, "target_column": "churn"}),
+            ("get_dataset_info", {"csv_path": CSV}),
+            ("detect_outliers", {"csv_path": CSV, "column": "price"}),
         ],
     ),
     (
-        "계약 유형별로 월 요금에 유의한 차이가 있는지 검정해줘",
+        "price 이상치를 제거해줘",
+        [("remove_outliers", {"csv_path": CSV, "column": "price"})],
+    ),
+    (
+        "처리 전후를 한 장으로 비교해서 보여줘",
         [
-            (
-                "test_anova",
-                {"csv_path": CSV, "column": "monthly_charges", "group_column": "contract_type"},
-            )
+            ("plot_before_after", {"csv_path": CSV, "column": "price"}),
+            ("view_chart", {"file_path": "before_after_price.png"}),
         ],
     ),
     (
-        "churn을 예측하는 모델들을 비교해줘",
+        "이제 어떤 시각화가 좋을지 추천하고 제일 좋은 걸로 그려줘",
         [
-            (
-                "compare_models",
-                {
-                    "csv_path": CSV,
-                    "target_column": "churn",
-                    "feature_columns": [
-                        "tenure", "contract_type", "monthly_charges",
-                        "payment_method", "senior_citizen",
-                    ],
-                },
-            )
+            ("recommend_visualizations", {"csv_path": CSV}),
+            ("plot_auto", {"csv_path": CSV}),
         ],
     ),
 ]
 
 
-def _shorten(text: str, limit: int = 900) -> str:
-    return text if len(text) <= limit else text[:limit] + f"\n... ({len(text) - limit} chars truncated)"
+def _describe(result) -> str:
+    """Render a tool result for the terminal (image content -> summary line)."""
+    if not result.content:
+        return "(empty)"
+    block = result.content[0]
+    if getattr(block, "type", "") == "image":
+        return f"[image content: {block.mimeType}, {len(block.data)} base64 chars — 클라이언트가 인라인 렌더링]"
+    text = block.text
+    return text if len(text) <= 900 else text[:900] + f"\n... ({len(text) - 900} chars truncated)"
 
 
 async def main() -> None:
     if not os.path.exists(os.path.join(REPO, CSV)):
-        sys.exit("customer_churn.csv not found — run `python generate_all_test_data.py` first.")
+        sys.exit("house_price.csv not found — run `python generate_all_test_data.py` first.")
 
     async with stdio_client(server) as (read, write):
         async with ClientSession(read, write) as session:
@@ -90,9 +87,8 @@ async def main() -> None:
                     print(f"\n→ tools/call: {tool}")
                     print(json.dumps(args, ensure_ascii=False, indent=2))
                     result = await session.call_tool(tool, args)
-                    body = result.content[0].text if result.content else ""
                     print(f"← result (isError={result.isError})")
-                    print(_shorten(body))
+                    print(_describe(result))
                 print()
 
 
