@@ -38,7 +38,7 @@ def test_normality(csv_path: str, column: str) -> dict:
         raise ValueError("Need at least 3 samples for normality test.")
 
     statistic, p_value = stats.shapiro(data)
-    is_normal = p_value > _ALPHA
+    is_normal = bool(p_value > _ALPHA)
     return {
         "column": column,
         "test": "Shapiro-Wilk",
@@ -67,7 +67,7 @@ def test_ttest(csv_path: str, column: str, group_column: str) -> dict:
     group2 = df[df[group_column] == groups[1]][column].dropna()
 
     statistic, p_value = stats.ttest_ind(group1, group2)
-    is_significant = p_value < _ALPHA
+    is_significant = bool(p_value < _ALPHA)
     return {
         "column": column,
         "group_column": group_column,
@@ -96,7 +96,7 @@ def test_anova(csv_path: str, column: str, group_column: str) -> dict:
 
     group_data = [df[df[group_column] == g][column].dropna() for g in groups]
     statistic, p_value = stats.f_oneway(*group_data)
-    is_significant = p_value < _ALPHA
+    is_significant = bool(p_value < _ALPHA)
     return {
         "column": column,
         "group_column": group_column,
