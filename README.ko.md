@@ -1,0 +1,548 @@
+<div align="center">
+
+# Data-Analyze-MCP
+
+[English](README.md) | **한국어**
+
+**자연어 한 마디로 데이터 분석, 전처리, 시각화까지 — LLM을 위한 MCP 데이터 분석 서버**
+
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-FastMCP-green.svg)](https://modelcontextprotocol.io/)
+[![Tools](https://img.shields.io/badge/Tools-60-2a78d6.svg)](#mcp-server-tools-60-total)
+[![Claude](https://img.shields.io/badge/Claude-Desktop%20%7C%20Code-d97757.svg)](https://claude.ai/)
+[![CI](https://github.com/chaeminyoon/Data-Analyze-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/chaeminyoon/Data-Analyze-MCP/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
+
+[빠른 시작](#quick-start) · [시연](#demo--분석--처리--시각화) · [활용 시나리오](#활용-시나리오) · [사례 연구](#사례-연구--해양-데이터-6장章) · [차트 테마](#chart-themes) · [도구 목록](#mcp-server-tools-60-total) · [LLM 연동 가이드](docs/LLM_INTEGRATION.md)
+
+<img src="docs/images/showcase.png" alt="자연어 요청으로 생성된 차트와 테마 예시" width="90%">
+
+</div>
+
+---
+
+## 한눈에 보기
+
+|  |  |  |
+|---|---|---|
+| **60** 전문 도구 · 11 도메인 모듈 | **5** 접근성 검증 차트 테마 | **2** LLM 백엔드 (Claude · OpenAI) |
+| **58** 테스트 · CI **4** 조합 매트릭스 | **0** 외부 의존성 팔레트 검증기 | **~4.2K** LOC (`src/`) |
+
+> **한 문장 요약** — CSV 하나와 자연어 한 마디로 프로파일링→전처리→시각화→모델 진단까지 이어지는 MCP 서버. **LLM은 어떤 도구를 부를지만 정하고, 모든 연산과 접근성 보장은 서버가 책임진다.** 색각이상·대비 검사를 pytest로 강제해 "예쁜 차트"가 아니라 **검증된 차트**를 반환하는 것이 핵심 차별점.
+
+## Features
+
+- **Auto Visualization** — 어떤 CSV를 넣어도 컬럼 역할(수치/범주/날짜/ID 등)을 자동 판별해 알맞은 차트를 추천하고 그 자리에서 렌더링 (`recommend_visualizations` → `plot_auto`)
+- **차트 테마 시스템** — `modern`(기본), `dark`, `minimal`, `vibrant`, `classic` 5종. 대화 중 "어둡게 바꿔줘" 한 마디면 이후 모든 차트의 디자인이 전환됨 (`set_chart_style`)
+- **계산으로 검증된 팔레트** — 모든 테마가 4가지 접근성 검사(OKLCH 명도 밴드·채도 하한·3종 색각이상 시뮬레이션 인접쌍 분리 ΔE≥12·배경 대비 3:1)를 **pytest로 강제** 통과. 검증기는 순수 파이썬 구현([`palette_check.py`](src/data_analysis/palette_check.py))으로 CI에서 매 커밋 실행
+- **결과 즉시 확인** — 차트를 MCP 이미지로 대화창에 인라인 표시(`view_chart`), CLI에서는 OS 뷰어 자동 오픈, 웹 결과 갤러리(`data-analysis-viewer`)로 실시간 모니터링
+- **60개 전문 도구** — 프로파일링, 전처리(결측/이상치/인코딩/스케일링), 피처 엔지니어링, 정적/인터랙티브 시각화, 구성·비교 차트, 분포·데이터 품질 진단, 가설검정, 모델 비교/평가/튜닝/진단
+- **한국어 우선** — 한글 컬럼명과 축 레이블 지원, 한국어 응답 시스템 프롬프트 내장
+- **어떤 데이터든 안전하게** — 빈 파일, 전체 NaN, 단일 클래스, 고카디널리티 등 엣지 입력도 크래시 없이 명확한 에러로 응답하여 LLM이 스스로 회복
+
+## Demo — 분석 → 처리 → 시각화
+
+실제 사용 흐름 그대로입니다. 사용자는 자연어로 묻고, LLM이 MCP 툴을 골라 호출하며,
+아래 수치와 차트는 전부 서버가 실제로 반환한 무편집 결과물입니다.
+
+**1. 분석** — 데이터를 파악합니다.
+
+```
+You: house_price.csv 분석해줘
+AI:  545행 x 12컬럼입니다. price 컬럼에서 이상치 34개(6.2%)가 탐지됩니다.
+     [get_dataset_info, detect_outliers 호출]
+```
+
+**2. 처리** — 이상치를 제거하고, 전/후를 한 장으로 비교합니다.
+
+```
+You: 이상치 제거하고 전후를 비교해서 보여줘
+AI:  34행을 제거했습니다. (545, 12) → (511, 12)
+     전/후 비교 차트입니다 — 왼쪽의 130만 이상 꼬리가 오른쪽에서 사라졌습니다.
+     [remove_outliers → plot_before_after → view_chart 호출, 차트 인라인 표시]
+```
+
+<div align="center"><img src="docs/images/demo_before_after.png" width="92%"></div>
+
+`plot_before_after`는 디스크의 원본과 캐시의 처리본을 같은 축으로 나란히 그려,
+전처리가 무엇을 바꿨는지 한 장에서 비교됩니다.
+
+**3. 시각화** — 정제된 데이터로 자동 추천을 받아 그립니다.
+
+```
+You: 어떤 시각화가 좋을지 추천하고 그려줘
+AI:  area-price 상관이 |r|=0.80으로 가장 강합니다 (제거 전 0.33 → 제거 후 0.80).
+     산점도를 생성했고 bedrooms로 색을 구분했습니다.
+     [recommend_visualizations → plot_auto → view_chart 호출, 차트 인라인 표시]
+```
+
+<div align="center"><img src="docs/images/demo_scatter.png" width="75%"></div>
+
+전처리가 시각화를 바꿉니다 — 이상치 제거만으로 상관계수가 0.33에서 0.80으로 올라간 것이
+그대로 차트에 드러납니다. 이 대화의 실제 MCP 요청/응답 JSON은
+[docs/LLM_INTEGRATION.md](docs/LLM_INTEGRATION.md)에 있습니다.
+
+## Chart Themes
+
+모든 차트 도구는 활성 테마를 통해 그려집니다. 대화 중 전환할 수 있고
+(`set_chart_style`), 서버 시작 시 `MCP_CHART_THEME` 환경변수로도 지정합니다.
+
+| dark | minimal | vibrant |
+|:---:|:---:|:---:|
+| <img src="docs/images/demo_dark.png" width="100%"> | <img src="docs/images/demo_minimal.png" width="100%"> | <img src="docs/images/demo_vibrant.png" width="100%"> |
+
+| 테마 | 용도 |
+|---|---|
+| `modern` (기본) | 차분한 전문가 팔레트, 옅은 그리드, 좌측 정렬 타이틀 |
+| `dark` | 다크 배경 전용으로 재계산된 팔레트 — 대시보드, 발표 |
+| `minimal` | 뮤트 톤, 그리드 최소화 — 보고서, 논문 |
+| `vibrant` | 고채도, 강한 대비 — 프레젠테이션 강조 |
+| `classic` | matplotlib/plotly 기본 스타일 (레거시 호환용, 접근성 미검증) |
+
+`classic`을 제외한 모든 팔레트는 색각이상 시뮬레이션(protan/deutan/tritan)에서
+인접 슬롯 간 ΔE ≥ 25를 유지하고, 각 테마의 배경 위에서 대비 3:1을 전부 충족합니다.
+슬롯 **순서 자체가 안전장치**입니다 — 인접쌍 최소 ΔE를 최대화하는 순서를 전수 탐색으로
+골랐기 때문에, 시리즈 색을 임의로 재배열하면 테스트가 실패합니다. 팔레트가 8색을
+넘어야 하는 상황은 색을 늘리는 대신 'Other' 접기(`fold_other`)나 소형 다중
+(`plot_small_multiples`)으로 해결합니다. 이중축(두 y축) 도구는 의도적으로 없습니다.
+
+## 활용 시나리오
+
+60개 도구는 낱개가 아니라 **작업 흐름**으로 쓰일 때 힘을 냅니다. 자주 쓰는 네 가지
+흐름과, 각 단계에서 LLM이 실제로 호출하게 되는 도구 체인입니다.
+
+### 1. 처음 보는 데이터, 10분 안에 파악하기
+
+```
+"이 CSV 믿어도 되는 데이터야? 구조부터 품질까지 훑어줘"
+```
+
+`profile_dataset` → `plot_missingness`(결측이 무작위인지 구조적인지) →
+`find_duplicates` → `recommend_visualizations` → `plot_auto` 상위 추천 렌더링.
+결측 진단이 먼저인 이유: **품질을 모르는 데이터의 차트는 그럴듯한 거짓말**이 되기
+쉽습니다. 결측 5% 이상이면 자동 추천 목록에 결측 진단이 알아서 올라옵니다.
+
+<div align="center"><img src="docs/images/maritime/missingness.png" width="92%"></div>
+<div align="center"><sub>실행 예 — NDBC 부이 데이터: 왼쪽이 컬럼별 결측률, 오른쪽 매트릭스에서 파고 센서의 결측이 무작위가 아니라 시간대 블록임이 드러납니다.</sub></div>
+
+### 2. 보고서·발표 자료 만들기
+
+```
+"보고서용으로 미니멀하게 바꾸고, 매출 상위 요인을 파레토로 정리해줘"
+```
+
+`set_chart_style("minimal")` → `plot_pareto`(상위 몇 개가 80%인지) →
+`plot_stacked_bar(normalize=True)`(구성 비교) → `stat_tile`(핵심 수치 카드) →
+생성된 PNG를 문서에 그대로 삽입. 발표 슬라이드는 `set_chart_style("dark")` 한
+번이면 같은 차트가 다크 배경용 팔레트로 다시 나옵니다 — 모든 테마가 색각이상·대비
+검사를 통과했으므로 **회의실 프로젝터에서도, 색각이상 동료에게도 같은 정보**가
+전달됩니다.
+
+<div align="center"><img src="docs/images/maritime/pareto_minimal.png" width="80%"></div>
+<div align="center"><sub>실행 예 — minimal 테마의 KMST 사고유형 파레토: 뮤트 톤 + 단일 %축, 80% 교차점 주석까지 보고서에 바로 붙는 형태.</sub></div>
+
+### 3. 모델 개발 루프
+
+```
+"이탈 예측 모델 만들어보고, 데이터를 더 모아야 할지 판단해줘"
+```
+
+`compare_models`(베이스라인) → `tune_hyperparameters` →
+`plot_learning_curve`(검증 곡선이 아직 오르는 중이면 데이터 추가가 답) →
+`plot_roc_pr`(불균형이면 PR이 진실) → `plot_calibration`(임계값 기반 의사결정 전제)
+→ 회귀라면 `plot_residuals`(R²가 못 보는 구조 결함). 정확도 숫자 하나가 아니라
+**"왜 이 모델을 믿어도 되는가"의 증거 세트**가 남습니다.
+
+<div align="center"><img src="docs/images/maritime/learning_curve.png" width="72%"></div>
+<div align="center"><sub>실행 예 — 부이 데이터로 파고 예측: train/validation 곡선 간 갭 0.63이 "지금은 노이즈를 외우는 중"이라고 말해줍니다.</sub></div>
+
+### 4. 비즈니스 질문에 차트 하나로 답하기
+
+| 질문 | 한 방에 답하는 도구 |
+|---|---|
+| "매출의 80%를 만드는 채널은?" | `plot_pareto` |
+| "전분기 대비 총액이 왜 줄었지?" | `plot_waterfall` (항목별 기여 분해) |
+| "지역×상품별 평균 단가는?" | `plot_pivot_heatmap` |
+| "작년과 올해, 지점별로 뭐가 달라졌어?" | `plot_slope` |
+| "이번 달 핵심 지표 하나만" | `stat_tile` (답이 숫자면 차트를 그리지 않는 것이 정답) |
+
+<div align="center"><img src="docs/images/maritime/waterfall.png" width="80%"></div>
+<div align="center"><sub>실행 예 — "업무정지 처분 총 201개월, 어디서 왔지?"에 워터폴 한 장: 충돌(+52)과 인명사상(+47)이 절반.</sub></div>
+
+모든 산출물은 `view_chart` 한 번으로 **대화창에 인라인 표시**됩니다 — MCP
+ImageContent(base64 PNG)로 반환되므로 Claude Desktop/Code 같은 멀티모달
+클라이언트에서 파일을 열 필요 없이 결과를 바로 봅니다 (stdio 프로토콜 실측 검증).
+
+## 사례 연구 — 해양 데이터 6장(章)
+
+실측 데이터 두 개로 도구들이 하나의 분석 스토리로 이어지는 과정입니다.
+**NOAA NDBC 46042 부이**(몬터레이만, 2023년 관측 47,137행 — 스크립트가 자동
+다운로드)와 **KMST 해양안전심판원 재결 139건**(동봉). 아래 모든 차트는
+[`examples/maritime_case_study.py`](examples/maritime_case_study.py) 한 번으로
+재현되는 무편집 도구 출력이며, 각 장마다 **어떤 디자인 규칙이 왜 개입하는지**를
+함께 적었습니다.
+
+<div align="center"><img src="docs/images/maritime/showcase.png" width="95%"></div>
+
+### 1장 · 트렌드 — 스무딩이 데이터를 감추면 안 된다
+
+```
+"작년 파고 추이 보여줘. 노이즈는 정리하되 원본은 지우지 말고"
+```
+
+<div align="center"><img src="docs/images/maritime/rolling.png" width="88%"></div>
+
+`plot_rolling` — 원시 관측 12,585개(뮤트 회색)가 배경에 그대로 남고, 7일
+이동평균만 프라이머리 색을 받습니다. 1~3월 폭풍 시즌이 트렌드선으로 읽히면서도
+개별 폭풍의 스파이크는 사라지지 않습니다. **디자인 규칙: 강조는 한 색, 맥락은
+뮤트 — 색은 계층이다.**
+
+### 2장 · 관계 — 점이 만 개를 넘으면 산점도는 거짓말을 한다
+
+<div align="center"><img src="docs/images/maritime/hexbin.png" width="72%"></div>
+
+`plot_hexbin` — 같은 데이터를 산점도로 찍으면 한 덩어리로 뭉개집니다. 밀도를
+**시퀀셜 램프**(한 색상 밝음→어두움)로 인코딩하면 "바람이 세질수록 파고 분산이
+커진다"는 구조가 나타납니다. **디자인 규칙: 연속량은 여러 색상이 아니라 한 색상의 명도로.**
+
+### 3장 · 분포 — 검정 수치와 시각 진단은 한 세트다
+
+<div align="center"><img src="docs/images/maritime/qq.png" width="62%"></div>
+
+`test_normality`(Shapiro p≈0, 정규 아님) + `plot_qq` — 검정은 "아니다"까지만
+말하고, Q-Q는 **어떻게** 아닌지를 보여줍니다: 오른쪽 끝이 기준선 위로 벗어나는
+우측 꼬리 = 극한 파고. 설계 하중 계산이라면 이 꼬리가 본론입니다.
+
+### 4장 · 예측 가능성 — 정확도 하나가 아니라 곡선 두 개
+
+<div align="center"><img src="docs/images/maritime/learning_curve.png" width="70%"></div>
+
+`plot_learning_curve` — 풍속·거스트·파주기·기압으로 파고를 예측하면 검증 R²
+0.34에 일반화 갭 0.63. 두 곡선이 "이 피처만으론 부족하고, 지금은 노이즈를
+외우는 중"이라고 진단합니다. **디자인 규칙: 불확실성(±1σ)은 옅은 채움 밴드로,
+시리즈 2개엔 반드시 범례.**
+
+### 5장 · 우선순위와 기여 — 사고 데이터에 묻는 두 가지
+
+<div align="center"><img src="docs/images/maritime/pareto.png" width="80%"></div>
+<div align="center"><img src="docs/images/maritime/waterfall.png" width="80%"></div>
+
+`plot_pareto` — 상위 5개 유형(인명사상·충돌·화재폭발·좌초·접촉)이 재결의 80%.
+막대(개별 비율)와 누적선이 **단일 % 축**을 공유합니다 — 이중축 없이. `plot_waterfall`
+— 업무정지 총 201개월을 유형별로 분해하면 충돌(+52)·인명사상(+47)이 절반.
+**디자인 규칙: 모든 막대 직접 라벨, +/−는 팔레트의 1·2번 색.**
+
+### 6장 · 답이 숫자 하나라면
+
+<div align="center"><img src="docs/images/maritime/stat_tile.png" width="40%"></div>
+
+`stat_tile` — "작년 최대 파고는?"의 답은 8.18m라는 숫자이지 차트가 아닙니다.
+**디자인 규칙: 그릴 필요가 없는 것을 그리지 않는 것도 시각화 결정이다.**
+
+```bash
+# 전체 재현 (부이 데이터 최초 1회 자동 다운로드 ~4MB)
+python examples/maritime_case_study.py
+```
+
+## Quick Start
+
+```bash
+git clone https://github.com/chaeminyoon/Data-Analyze-MCP.git
+cd Data-Analyze-MCP
+pip install -e .                        # 서버 + 클라이언트 + 뷰어 설치
+python generate_all_test_data.py        # 데모 데이터 3종 생성 (선택)
+```
+
+### Claude Desktop / Claude Code
+
+`claude_desktop_config.json` 또는 `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "data-analysis": {
+      "command": "data-analysis"
+    }
+  }
+}
+```
+
+이후 Claude에게 그냥 말하면 됩니다: *"house_price.csv 분석하고 이상치 제거한 다음 시각화해줘"*
+— 차트가 대화창 안에 바로 표시됩니다.
+
+### OpenAI API (동봉 클라이언트)
+
+```bash
+export OPENAI_API_KEY=sk-... MODEL_NAME=gpt-4o-mini
+python data_client.py
+```
+
+턴이 끝날 때마다 새 차트가 OS 기본 뷰어로 자동으로 열립니다 (`AUTO_OPEN_RESULTS=0`으로 끔).
+
+### 실시간 결과 갤러리
+
+```bash
+data-analysis-viewer            # http://127.0.0.1:8400
+```
+
+분석과 나란히 띄워두면 생성되는 결과물이 3초마다 자동 갱신됩니다.
+PNG는 그리드로 렌더링, 인터랙티브 Plotly HTML은 새 탭으로 열립니다. 추가 의존성 없음.
+
+## MCP Server Tools (60 Total)
+
+<details>
+<summary><b>Exploration & Profiling</b> (4) — 데이터 파악</summary>
+
+| Tool | Description |
+|------|-------------|
+| `get_dataset_info` | 데이터셋 기본 정보 (shape, dtypes, 결측치) |
+| `profile_dataset` | 종합 프로파일링 (통계량, 상관관계, 분포) |
+| `detect_data_types` | 컬럼 역할 자동 분류 (수치/범주/날짜/ID/텍스트) |
+| `find_duplicates` | 중복 행 탐지 및 카운트 |
+</details>
+
+<details>
+<summary><b>Preprocessing</b> (5) — 정제</summary>
+
+| Tool | Description |
+|------|-------------|
+| `handle_missing_values` | 결측치 처리 (mean, median, mode, drop, ffill) |
+| `detect_outliers` | 이상치 탐지 (IQR, Z-score) |
+| `remove_outliers` | 이상치 제거 (탐지된 전체) |
+| `encode_categorical` | 범주형 인코딩 (Label, One-hot) |
+| `scale_features` | 스케일링 (Standard, MinMax) |
+</details>
+
+<details>
+<summary><b>Feature Engineering</b> (3) — 피처 생성</summary>
+
+| Tool | Description |
+|------|-------------|
+| `create_derived_feature` | 수식 기반 파생 변수 (`df.eval`) |
+| `create_polynomial_features` | 다항·교호작용 피처 |
+| `extract_datetime_features` | 날짜/시간 피처 (year, month, dayofweek 등) |
+</details>
+
+<details open>
+<summary><b>Auto Visualization</b> (2) — 자동 추천·렌더링</summary>
+
+| Tool | Description |
+|------|-------------|
+| `recommend_visualizations` | 데이터 자동 분석 → 근거 있는 차트 추천 + 실행 가능한 tool_call |
+| `plot_auto` | 컬럼 1~3개(또는 생략)로 차트 자동 선택·렌더링 (`interactive` 지원) |
+
+수치→히스토그램 · 범주→막대 · 수치×수치→산점도 · 수치×범주(≤8레벨)→박스플롯 ·
+수치×범주(9~16레벨)→소형 다중 · 날짜×수치→라인 · 범주×범주→교차표 · +범주→hue/그룹.
+추천 목록에는 시간×구성→영역 차트, 결측 5% 이상→결측 진단이 자동 포함됩니다.
+</details>
+
+<details>
+<summary><b>Chart Style</b> (2) — 디자인 테마</summary>
+
+| Tool | Description |
+|------|-------------|
+| `list_chart_styles` | 사용 가능한 테마 목록과 현재 테마 |
+| `set_chart_style` | 이후 모든 차트의 디자인 전환 (modern/dark/minimal/vibrant/classic) |
+</details>
+
+<details>
+<summary><b>Visualization</b> (15) — 정적 PNG + 인터랙티브 HTML</summary>
+
+| Tool | Description |
+|------|-------------|
+| `plot_histogram` / `plot_boxplot` / `plot_scatter` | 커스터마이징 가능한 기본 차트 |
+| `plot_before_after` | 전처리 전/후를 같은 축으로 나란히 비교 (histogram/boxplot) |
+| `plot_line` | 시계열 라인 (그룹·리샘플링, `interactive`) |
+| `plot_rolling` | 원시 시계열(뮤트) + 이동평균(프라이머리) — 노이즈 속 트렌드 |
+| `plot_bar` | 범주 빈도/집계 막대 (top_n, `interactive`) |
+| `plot_correlation_heatmap` | 상관관계 히트맵 (다이버징 램프) |
+| `plot_pivot_heatmap` | 범주×범주×수치 집계 히트맵 — "몇 건"이 아니라 "얼마나" |
+| `plot_hexbin` | 밀도 헥스빈 — 수만 행에서 산점도가 뭉개질 때의 대체재 |
+| `analyze_target_distribution` | 타깃 분포 + 불균형 탐지 |
+| `plot_interactive_scatter/histogram/boxplot/heatmap` | Plotly HTML (줌·호버) |
+</details>
+
+<details>
+<summary><b>Composition & Comparison</b> (6) — 구성·비교</summary>
+
+| Tool | Description |
+|------|-------------|
+| `plot_stacked_bar` | 스택 막대 (100% 정규화 지원, 9레벨 이상 'Other' 접기, 세그먼트 간 간격) |
+| `plot_area` | 스택 영역 — 시간에 따른 총량과 구성 변화 (리샘플링 지원) |
+| `plot_slope` | 슬로프 차트 — 두 시점 간 항목별 변화, 양끝 직접 라벨 |
+| `plot_small_multiples` | 소형 다중 — 카테고리별 미니 차트를 공유 축으로 배열 (색 순환 대신 분할) |
+| `plot_pareto` | 파레토 — 상위 몇 개가 80%를 만드는지, 단일 %축 (이중축 없음) |
+| `plot_waterfall` | 워터폴 — 총량 변화의 항목별 기여 분해 (+/− 색 구분, 직접 라벨) |
+</details>
+
+<details>
+<summary><b>Distribution & Data Quality</b> (5) — 분포·품질 진단</summary>
+
+| Tool | Description |
+|------|-------------|
+| `plot_ecdf` | 경험적 누적분포 — 히스토그램이 감추는 정확한 백분위를 그대로 읽음 |
+| `plot_violin` | 바이올린 — 박스플롯이 감추는 쌍봉 분포 노출 (사분위 내장) |
+| `plot_missingness` | 결측 진단 2패널 — 컬럼별 결측률 + 행 순서 결측 매트릭스(구조적 공백 탐지) |
+| `plot_qq` | Q-Q 플롯 — `test_normality` 검정의 시각 짝꿍 (왜도·두꺼운 꼬리 진단) |
+| `stat_tile` | 히어로 숫자 타일 — 답이 숫자 하나일 때 차트 대신 쓰는 카드 |
+</details>
+
+<details>
+<summary><b>Machine Learning</b> (8) — 모델링·진단</summary>
+
+| Tool | Description |
+|------|-------------|
+| `compare_models` | RandomForest / XGBoost / LogisticRegression / Linear 성능 비교 |
+| `evaluate_model` | Confusion Matrix, Feature Importance, 상세 메트릭 |
+| `tune_hyperparameters` | GridSearchCV / RandomizedSearchCV |
+| `plot_roc_pr` | ROC + PR 커브 나란히 (불균형 데이터에서 ROC 단독의 착시 방지, 다중클래스 OvR) |
+| `plot_calibration` | 캘리브레이션 커브 — 확률이 정직한지 (임계값 기반 의사결정의 전제) |
+| `plot_feature_importance` | 중요도/|계수| 수평 막대 — 단일 색, 직접 라벨 |
+| `plot_residuals` | 잔차 vs 예측 + 잔차 분포 — R²가 못 보는 구조적 결함 탐지 |
+</details>
+
+<details>
+<summary><b>Statistical Analysis</b> (6) — 가설검정</summary>
+
+| Tool | Description |
+|------|-------------|
+| `calculate_correlation` | Pearson / Spearman / Kendall |
+| `test_normality` | Shapiro-Wilk 정규성 검정 |
+| `test_ttest` / `test_anova` | 그룹 간 평균 비교 |
+| `test_chi_square` | 범주형 독립성 검정 |
+| `calculate_confidence_interval` | 평균 신뢰구간 |
+</details>
+
+<details>
+<summary><b>Data & Results Management</b> (4) — 캐시·결과물</summary>
+
+| Tool | Description |
+|------|-------------|
+| `list_cached_datasets` / `clear_cache` | 인메모리 데이터셋 캐시 관리 |
+| `view_chart` | 차트를 대화창에 인라인 표시 (MCP 이미지 콘텐츠) |
+| `list_outputs` | 생성된 결과물 목록 (최신순) |
+</details>
+
+## Architecture
+
+```mermaid
+graph LR
+    classDef blue fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef purple fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef orange fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef green fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef gray fill:#fafafa,stroke:#333,stroke-width:2px
+
+    User((사용자))
+    subgraph Client [Client Layer]
+        Agent[Claude 또는<br/>LangGraph Agent]
+    end
+    LLM[LLM Engine<br/>Claude / OpenAI]
+    subgraph MCPLayer [MCP Server]
+        Server[FastMCP<br/>60 Tools]
+        Theme[Chart<br/>Themes]
+        Cache[Dataset<br/>Cache]
+    end
+    Files[(CSV · PNG · HTML)]
+    Viewer[결과 갤러리<br/>:8400]
+
+    User <-->|자연어| Agent
+    Agent <-->|프롬프트/응답| LLM
+    Agent <-->|MCP tools/call| Server
+    Server <--> Cache
+    Server <--> Theme
+    Server <-->|read/write| Files
+    Files -->|실시간 갱신| Viewer
+    Viewer --> User
+
+    class User gray
+    class Agent blue
+    class LLM orange
+    class Server,Cache,Theme purple
+    class Files,Viewer green
+```
+
+역할 분담: LLM은 *어떤 툴을 어떤 인자로 부를지*만 결정하고, 실제 연산(pandas/sklearn/matplotlib)은
+전부 서버가 수행합니다. 잘못된 입력은 `isError`와 명확한 메시지로 반환되어 LLM이 스스로 수정합니다.
+
+## 엔지니어링 하이라이트
+
+기능 목록 뒤에 있는 **설계 결정**들입니다. 각 항목은 "무엇을 만들었나"가 아니라 "왜 그렇게 정했나"입니다.
+
+- **접근성을 계산 문제로 환원** — "색이 예쁜가"는 주관이지만 "색각이상 동료가 두 시리즈를 구분할 수 있는가"는 계산 가능합니다. [`palette_check.py`](src/data_analysis/palette_check.py)는 sRGB→OKLab(Ottosson)·CIELAB(D65)·Machado 2009 색각이상 행렬·WCAG 상대휘도를 **공개 공식 그대로, 외부 의존성 0개로** 구현합니다. 팔레트가 통과해야 할 4개 검사(명도 밴드·채도 하한·CVD 인접쌍 ΔE·배경 대비 3:1)를 pytest가 매 커밋 강제합니다.
+- **팔레트 순서 자체가 안전장치** — 시리즈 색은 슬롯 순서대로 배정됩니다. 그 순서는 임의가 아니라 **인접쌍의 최소 CVD 거리를 최대화하도록 전수 탐색**으로 골랐습니다([`theming.py`](src/data_analysis/theming.py)). 그래서 색을 임의로 재배열하면 접근성 테스트가 깨집니다 — 실수가 조용히 넘어가지 않습니다.
+- **"색을 늘리는" 유혹을 구조로 차단** — 8색을 넘어야 하는 상황에서 색을 추가하는 대신 'Other' 접기(`fold_other`)나 소형 다중(`plot_small_multiples`)으로 해결합니다. 이중축(두 y축) 도구는 **의도적으로 없습니다** — 파레토조차 단일 %축으로 그립니다. 도구가 없으면 나쁜 차트도 나올 수 없습니다.
+- **자동 시각화는 규칙 엔진** — `recommend_visualizations`는 컬럼 역할(수치/범주/날짜/ID)을 판별해 결정론적 규칙으로 차트를 고르고, **실행 가능한 `tool_call`까지** 반환합니다. LLM의 감(感)이 아니라 데이터 형태가 차트를 정합니다. 결측 5% 이상이면 결측 진단을 추천 목록에 자동으로 끼워 넣습니다.
+- **엣지 입력에서 크래시 대신 회복** — 빈 파일·전체 NaN·단일 클래스·고카디널리티 같은 입력도 예외로 죽지 않고 `isError` + 명확한 메시지로 응답해, LLM이 다음 도구를 스스로 고르게 합니다. 전용 엣지케이스 테스트([`test_edge_cases.py`](tests/test_edge_cases.py))로 회귀를 막습니다.
+- **선택 의존성의 우아한 저하** — `xgboost`가 없으면 `compare_models`는 남은 모델로 계속 동작하고, XGBoost를 직접 지정했을 때만 명확한 에러를 냅니다([`ml.py`](src/data_analysis/tools/ml.py)). 설치 환경이 서버를 멈추지 않습니다.
+- **결과를 세 경로로 노출** — 멀티모달 클라이언트에는 MCP `ImageContent`(base64 PNG)로 대화창 인라인, CLI에는 OS 뷰어 자동 오픈, 그리고 3초 폴링 웹 갤러리(`:8400`). 클라이언트가 무엇이든 사용자가 결과를 즉시 봅니다.
+
+## 품질 · 테스트
+
+포트폴리오 코드가 아니라 **유지보수되는 코드**임을 보이는 부분입니다.
+
+- **CI 매트릭스 4조합** — Python `3.11`/`3.12` × pandas `2.2`/`3.0`을 교차 실행합니다([ci.yml](.github/workflows/ci.yml)). pandas 2와 3은 문자열 dtype(`object` vs `str`)이 달라, 둘 다 green이어야 문자열 처리 회귀를 잡습니다.
+- **58개 테스트 · ruff 린트** — 시각화·전처리·ML/통계·자동추천·팔레트·엣지케이스·서버/결과를 커버합니다. `MPLBACKEND=Agg`로 헤드리스 렌더링까지 검증합니다.
+- **접근성이 CI 게이트** — 위 팔레트 4개 검사가 테스트 스위트에 포함되어, 색을 손대는 커밋은 검사를 통과하지 못하면 병합되지 않습니다.
+- **PR 기반 개발** — 기능은 브랜치→PR→머지로 들어왔습니다(`feat/chart-themes`, `feat/tests-ci-license` 등). 히스토리가 각 기능 단위로 읽힙니다.
+- **재현 가능한 산출물** — README의 모든 데모·사례 이미지는 [`scripts/generate_demo_images.py`](scripts/generate_demo_images.py)와 [`examples/maritime_case_study.py`](examples/maritime_case_study.py)의 **무편집 도구 출력**입니다. 손으로 그린 목업이 없습니다.
+
+```bash
+pip install -e ".[dev]"
+ruff check src tests
+pytest -q
+```
+
+## Project Structure
+
+<details>
+<summary>펼쳐 보기</summary>
+
+```
+Data-Analyze-MCP/
+├── src/data_analysis/          # MCP 서버 패키지 (python -m data_analysis)
+│   ├── server.py               #   공유 FastMCP 인스턴스 + 테마 초기화
+│   ├── theming.py              #   차트 테마 시스템 (5종 프리셋 + 시퀀셜/다이버징 램프)
+│   ├── palette_check.py        #   팔레트 접근성 검증기 (OKLCH·CVD·WCAG, 의존성 없음)
+│   ├── viewer.py               #   결과 갤러리 웹 UI (:8400)
+│   ├── config.py               #   환경변수 기반 설정
+│   ├── cache.py / helpers.py   #   데이터셋 캐시 · 공통 헬퍼 · 마크 스펙
+│   ├── fonts.py / prompts.py   #   한글 폰트 · 시스템 프롬프트
+│   └── tools/                  #   도메인별 60개 도구
+│       ├── exploration.py         ├── preprocessing.py
+│       ├── feature_engineering.py ├── visualization.py
+│       ├── composition.py         ├── distribution.py
+│       ├── auto_viz.py            ├── style.py
+│       ├── results.py             ├── ml.py
+│       └── statistics.py
+├── data_client.py              # LangGraph 대화형 클라이언트 (OpenAI)
+├── examples/demo_session.py    # LLM-MCP 세션 재현 스크립트
+├── examples/maritime_case_study.py  # 해양 데이터 사례 연구 6장 재현 (NDBC 자동 다운로드)
+├── docs/LLM_INTEGRATION.md     # 실측 인풋/아웃풋 가이드
+├── scripts/generate_demo_images.py  # README 데모 이미지 재생성 (무편집 툴 출력)
+├── generate_all_test_data.py   # 데모 데이터 3종 생성기
+└── pyproject.toml              # src-layout 패키지 (pip install -e .)
+```
+</details>
+
+## Configuration
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `MCP_CHART_THEME` | `modern` | 시작 시 차트 테마 (modern/dark/minimal/vibrant/classic) |
+| `MCP_OUTPUT_DIR` | `outputs/` | 차트·내보내기 저장 위치 |
+| `MODEL_NAME` | `gpt-4o-mini` | 동봉 클라이언트의 모델 ID |
+| `AUTO_OPEN_RESULTS` | `1` | CLI 결과 자동 열기 (0=끔) |
+| `MCP_CLASSIFICATION_MAX_UNIQUE` | `10` | 분류/회귀 판별 임계값 |
+
+## Documentation
+
+- [LLM 연동 가이드](docs/LLM_INTEGRATION.md) — Claude/OpenAI 연결법 + 실측 4턴 세션의 MCP JSON 전문
+- [세션 재현](examples/demo_session.py) — API 키 없이 문서의 인풋/아웃풋 그대로 재실행
+- [해양 사례 연구](examples/maritime_case_study.py) — README 사례 연구 6장의 전 차트 재현 (실측 NDBC·KMST 데이터)
+
+---
+
+<div align="center">
+<sub>Python 3.11+ · FastMCP · pandas / scikit-learn / matplotlib / seaborn / plotly · 데모 데이터셋 3종 동봉</sub>
+</div>
