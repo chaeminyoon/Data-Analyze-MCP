@@ -62,3 +62,6 @@ tmp/
 
 # Node modules (if any)
 node_modules/
+
+# 사례 연구 데이터: 스크립트가 NDBC에서 자동 다운로드 (KMST CSV만 동봉)
+examples/data/buoy_*
