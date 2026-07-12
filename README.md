@@ -1,5 +1,8 @@
 <div align="center">
-# **English** | [한국어](README.ko.md)
+
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.ko.md">한국어</a>
+</p>
 
 # Data-Analyze-MCP
 **Data analysis, preprocessing, and visualization from a single natural-language request — an MCP data-analysis server for LLMs**
