@@ -1,5 +1,5 @@
 <div align="center">
-**English** | [한국어](README.ko.md)
+# **English** | [한국어](README.ko.md)
 
 # Data-Analyze-MCP
 **Data analysis, preprocessing, and visualization from a single natural-language request — an MCP data-analysis server for LLMs**
