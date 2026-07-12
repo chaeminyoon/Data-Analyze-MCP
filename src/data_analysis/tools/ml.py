@@ -8,20 +8,26 @@ from sklearn.ensemble import (
     RandomForestRegressor,
 )
 from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
     accuracy_score,
+    auc,
+    average_precision_score,
     confusion_matrix,
     f1_score,
     mean_absolute_error,
     mean_squared_error,
+    precision_recall_curve,
     precision_score,
     r2_score,
     recall_score,
+    roc_curve,
 )
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.svm import SVC, SVR
 
+from .. import theming
 from ..cache import get_data
 from ..config import CLASSIFICATION_MAX_UNIQUE
 from ..helpers import (
@@ -167,7 +173,10 @@ def evaluate_model(
         )
 
         plt.figure(figsize=(8, 6))
-        sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt="d", cmap="Blues")
+        sns.heatmap(
+            confusion_matrix(y_test, y_pred), annot=True, fmt="d",
+            cmap=theming.sequential_cmap(),
+        )
         plt.title(f"Confusion Matrix - {algorithm}")
         plt.ylabel("True Label")
         plt.xlabel("Predicted Label")
@@ -289,3 +298,242 @@ def tune_hyperparameters(
         "model_type": model_type,
         "is_classification": is_classification,
     }
+
+
+# --- [Model diagnostic charts] ----------------------------------------------
+def _fit_for_diagnostics(csv_path, target_column, feature_columns, algorithm,
+                         need_proba=False, need_regression=False):
+    """Train/test split + fit, shared by the diagnostic chart tools."""
+    df = get_data(csv_path).copy()
+    X, y = _prepare_xy(df, target_column, feature_columns)
+    is_classification = is_classification_target(y)
+    if need_proba and not is_classification:
+        raise ValueError(f"'{target_column}' is continuous — this chart needs a "
+                         "classification target.")
+    if need_regression and is_classification:
+        raise ValueError(f"'{target_column}' looks categorical — this chart needs "
+                         "a regression target.")
+
+    classes = None
+    if is_classification:
+        encoder = LabelEncoder()
+        y = encoder.fit_transform(y)
+        classes = [str(c) for c in encoder.classes_]
+    model = _build_estimator(algorithm, is_classification)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    model.fit(X_train, y_train)
+    return model, X, X_test, y_test, classes
+
+
+@mcp.tool()
+def plot_roc_pr(
+    csv_path: str,
+    target_column: str,
+    feature_columns: list = None,
+    algorithm: str = "RandomForest",
+) -> dict:
+    """ROC and Precision-Recall curves side by side, with AUC / AP scores.
+
+    Binary targets get one curve per panel; multiclass targets get one-vs-rest
+    curves (at most 8 classes). PR is included because ROC alone flatters
+    models on imbalanced data.
+    """
+    model, _, X_test, y_test, classes = _fit_for_diagnostics(
+        csv_path, target_column, feature_columns, algorithm, need_proba=True
+    )
+    if not hasattr(model, "predict_proba"):
+        raise ValueError(f"{algorithm} does not expose predict_proba.")
+    if len(classes) > 8:
+        raise ValueError(f"{len(classes)} classes — one-vs-rest curves are "
+                         "unreadable beyond 8. Reduce classes first.")
+    proba = model.predict_proba(X_test)
+
+    fig, (ax_roc, ax_pr) = plt.subplots(1, 2, figsize=(13, 5.5))
+    try:
+        palette = theming.palette()
+        scores = {}
+        binary = len(classes) == 2
+        targets = [1] if binary else range(len(classes))
+        for idx, k in enumerate(targets):
+            y_bin = (np.asarray(y_test) == k).astype(int)
+            p = proba[:, k]
+            fpr, tpr, _ = roc_curve(y_bin, p)
+            prec, rec, _ = precision_recall_curve(y_bin, p)
+            roc_auc, ap = auc(fpr, tpr), average_precision_score(y_bin, p)
+            label = classes[k] if not binary else classes[1]
+            scores[label] = {"roc_auc": round(float(roc_auc), 4),
+                             "average_precision": round(float(ap), 4)}
+            color = palette[idx % len(palette)]
+            ax_roc.plot(fpr, tpr, color=color, label=f"{label} (AUC {roc_auc:.3f})")
+            ax_pr.plot(rec, prec, color=color, label=f"{label} (AP {ap:.3f})")
+
+        chance_color = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        ax_roc.plot([0, 1], [0, 1], linestyle="--", linewidth=1.2,
+                    color=chance_color, label="Chance")
+        base_rate = float(np.mean(np.asarray(y_test) == (1 if binary else y_test)))
+        if binary:
+            base_rate = float(np.mean(y_test))
+            ax_pr.axhline(base_rate, linestyle="--", linewidth=1.2,
+                          color=chance_color, label=f"Base rate {base_rate:.2f}")
+        ax_roc.set_xlabel("False positive rate")
+        ax_roc.set_ylabel("True positive rate")
+        ax_roc.set_title("ROC", loc="left")
+        ax_pr.set_xlabel("Recall")
+        ax_pr.set_ylabel("Precision")
+        ax_pr.set_title("Precision-Recall", loc="left")
+        for ax in (ax_roc, ax_pr):
+            ax.legend(fontsize=9)
+        fig.suptitle(f"{algorithm} — {target_column}", fontweight="bold")
+        fig.tight_layout(rect=(0, 0, 1, 0.94))
+        path = save_current_figure(f"roc_pr_{safe_name(algorithm)}.png")
+        return {"algorithm": algorithm, "classes": classes,
+                "scores": scores, "plot_path": path}
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_calibration(
+    csv_path: str,
+    target_column: str,
+    feature_columns: list = None,
+    algorithm: str = "RandomForest",
+    n_bins: int = 10,
+) -> dict:
+    """Calibration curve for a binary classifier — are the probabilities honest?
+
+    A model can rank well (high AUC) while its probabilities are far off;
+    if you act on thresholds, calibration is the chart that matters.
+    """
+    model, _, X_test, y_test, classes = _fit_for_diagnostics(
+        csv_path, target_column, feature_columns, algorithm, need_proba=True
+    )
+    if len(classes) != 2:
+        raise ValueError("Calibration curves need a binary target "
+                         f"(got {len(classes)} classes).")
+    if not hasattr(model, "predict_proba"):
+        raise ValueError(f"{algorithm} does not expose predict_proba.")
+    proba = model.predict_proba(X_test)[:, 1]
+    frac_pos, mean_pred = calibration_curve(y_test, proba, n_bins=n_bins,
+                                            strategy="quantile")
+
+    plt.figure(figsize=(7, 6))
+    try:
+        chance_color = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        plt.plot([0, 1], [0, 1], linestyle="--", linewidth=1.2,
+                 color=chance_color, label="Perfectly calibrated")
+        plt.plot(mean_pred, frac_pos, marker="o",
+                 color=theming.palette()[0], label=algorithm)
+        plt.xlabel("Predicted probability")
+        plt.ylabel("Observed frequency")
+        plt.title(f"Calibration — {algorithm} on {target_column}")
+        plt.legend()
+        path = save_current_figure(f"calibration_{safe_name(algorithm)}.png")
+        gap = float(np.mean(np.abs(frac_pos - mean_pred)))
+        return {"algorithm": algorithm, "n_bins": n_bins,
+                "mean_calibration_gap": round(gap, 4), "plot_path": path}
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_feature_importance(
+    csv_path: str,
+    target_column: str,
+    feature_columns: list = None,
+    algorithm: str = "RandomForest",
+    top_n: int = 15,
+) -> dict:
+    """Horizontal bar chart of feature importances (or |coefficients|).
+
+    One hue only — the bars encode magnitude, not identity, so a rainbow
+    here would be decoration. Values are direct-labeled.
+    """
+    model, X, _, _, _ = _fit_for_diagnostics(
+        csv_path, target_column, feature_columns, algorithm
+    )
+    if hasattr(model, "feature_importances_"):
+        values, kind = model.feature_importances_, "feature_importances"
+    elif hasattr(model, "coef_"):
+        coef = np.asarray(model.coef_)
+        values = np.abs(coef).mean(axis=0) if coef.ndim > 1 else np.abs(coef)
+        kind = "abs_coefficients"
+    else:
+        raise ValueError(f"{algorithm} exposes neither feature_importances_ nor coef_.")
+
+    order = np.argsort(values)[::-1][:top_n]
+    names = [str(X.columns[i]) for i in order][::-1]
+    vals = values[order][::-1]
+
+    plt.figure(figsize=(9, max(3.5, 0.38 * len(names) + 1)))
+    try:
+        ax = plt.gca()
+        ax.barh(names, vals, color=theming.palette()[0],
+                edgecolor=theming.face_color(), linewidth=1.2)
+        from ..helpers import add_bar_labels
+
+        add_bar_labels(ax, fmt="{:,.3f}", orientation="horizontal")
+        ax.set_xlabel(kind.replace("_", " "))
+        ax.set_title(f"{kind.replace('_', ' ').title()} — {algorithm}", loc="left")
+        path = save_current_figure(f"feature_importance_{safe_name(algorithm)}.png")
+        return {
+            "algorithm": algorithm, "kind": kind,
+            "importances": {str(X.columns[i]): round(float(values[i]), 4) for i in order},
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_residuals(
+    csv_path: str,
+    target_column: str,
+    feature_columns: list = None,
+    algorithm: str = "RandomForest",
+) -> dict:
+    """Residual diagnostics for a regression model: residual-vs-predicted +
+    residual histogram. Curvature or a funnel shape in the left panel means
+    the model is missing structure that R² alone won't reveal."""
+    model, _, X_test, y_test, _ = _fit_for_diagnostics(
+        csv_path, target_column, feature_columns, algorithm, need_regression=True
+    )
+    y_pred = model.predict(X_test)
+    residuals = np.asarray(y_test) - y_pred
+
+    fig, (ax_sc, ax_hist) = plt.subplots(
+        1, 2, figsize=(13, 5), gridspec_kw={"width_ratios": [1.5, 1]}
+    )
+    try:
+        primary = theming.palette()[0]
+        zero_color = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        ax_sc.scatter(y_pred, residuals, s=28, alpha=0.55, color=primary,
+                      edgecolors="none")
+        ax_sc.axhline(0, linestyle="--", linewidth=1.2, color=zero_color)
+        ax_sc.set_xlabel("Predicted")
+        ax_sc.set_ylabel("Residual (actual - predicted)")
+        ax_sc.set_title("Residuals vs predicted", loc="left")
+
+        ax_hist.hist(residuals, bins=30, color=primary,
+                     edgecolor=theming.face_color(), linewidth=0.8)
+        ax_hist.set_xlabel("Residual")
+        ax_hist.set_ylabel("Count")
+        ax_hist.set_title("Residual distribution", loc="left")
+
+        fig.suptitle(f"{algorithm} — {target_column}", fontweight="bold")
+        fig.tight_layout(rect=(0, 0, 1, 0.94))
+        path = save_current_figure(f"residuals_{safe_name(algorithm)}.png")
+        return {
+            "algorithm": algorithm,
+            "rmse": round(float(np.sqrt(np.mean(residuals ** 2))), 4),
+            "mean_residual": round(float(np.mean(residuals)), 4),
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc

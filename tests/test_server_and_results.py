@@ -10,7 +10,7 @@ from data_analysis.tools import results as rs
 from data_analysis.tools import style as sty
 from data_analysis.tools import visualization as vz
 
-EXPECTED_TOOL_COUNT = 41
+EXPECTED_TOOL_COUNT = 53
 
 
 def test_all_tools_registered():

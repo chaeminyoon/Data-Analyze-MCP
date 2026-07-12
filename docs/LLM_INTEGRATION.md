@@ -53,7 +53,7 @@ python data_client.py
 
 ## 2. 와이어 프로토콜: 실제로 오가는 JSON
 
-연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 등록된 툴 전체(현재 41개)의
+연결 직후 클라이언트가 `initialize` → `tools/list`를 보내면 서버가 등록된 툴 전체(현재 53개)의
 이름·설명·JSON 스키마를 반환합니다. 이후 툴 호출은 JSON-RPC `tools/call`입니다:
 
 ```json
@@ -86,7 +86,7 @@ python data_client.py
 
 ## 3. 실측 세션: 분석 → 처리 → 시각화 (4턴)
 
-> 환경: 서버 `DataAnalysis` (41 tools) · 데이터 `house_price.csv` (545행)
+> 환경: 서버 `DataAnalysis` (53 tools) · 데이터 `house_price.csv` (545행)
 > 아래 모든 `result`는 서버가 실제 반환한 값입니다.
 
 ### 턴 1 — 분석: 데이터 파악

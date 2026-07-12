@@ -21,8 +21,9 @@ from . import visualization as vz
 
 # Roles that cannot be charted directly.
 _UNPLOTTABLE = ("id", "text", "constant", "empty")
-# Max category levels for grouping/hue to keep charts readable.
-_MAX_GROUP_LEVELS = 12
+# Max category levels for grouping/hue — matches the palette size, so a hue
+# is never cycled. Beyond this, tools fold into 'Other' or facet instead.
+_MAX_GROUP_LEVELS = 8
 
 
 def _measures(roles: dict) -> list[str]:
@@ -91,6 +92,45 @@ def _build_recommendations(csv_path, df, roles, target_column=None, limit=8):
                 f"Trend of '{y}' over '{x}', one line per '{lowcat[0]}' group",
                 "plot_line", {"x_column": x, "y_column": y, "group_column": lowcat[0]},
             )
+            add(
+                "area", [x, y, lowcat[0]],
+                f"How the total '{y}' and its '{lowcat[0]}' composition evolve together",
+                "plot_area", {"x_column": x, "y_column": y, "group_column": lowcat[0]},
+            )
+
+    # Composition: a measure split by two categoricals.
+    if measures and len(lowcat) >= 2:
+        add(
+            "stacked_bar", [lowcat[0], lowcat[1], measures[0]],
+            f"Composition of '{lowcat[1]}' within each '{lowcat[0]}'",
+            "plot_stacked_bar",
+            {"category_column": lowcat[0], "stack_column": lowcat[1],
+             "y_column": measures[0]},
+        )
+
+    # A category with too many levels for hues: facet instead of coloring.
+    manycat = [
+        c for c, i in roles.items()
+        if i["role"] in ("categorical", "discrete")
+        and _MAX_GROUP_LEVELS < i["nunique"] <= 16
+    ]
+    if measures and manycat:
+        add(
+            "small_multiples", [measures[0], manycat[0]],
+            f"'{manycat[0]}' has {roles[manycat[0]]['nunique']} levels — too many "
+            "for hues, so one mini-chart per level on a shared scale",
+            "plot_small_multiples", {"column": measures[0], "by_column": manycat[0]},
+        )
+
+    # Data quality: surface missingness before anyone trusts the charts.
+    worst_missing = max((i["missing_pct"] for i in roles.values()), default=0.0)
+    if worst_missing >= 5.0:
+        add(
+            "missingness", [],
+            f"Up to {worst_missing:.0f}% missing in some columns — check whether "
+            "the gaps are random or structured before analysis",
+            "plot_missingness", {},
+        )
 
     # Relationships between numeric columns.
     if len(numeric) >= 3:
@@ -190,7 +230,7 @@ def _plot_crosstab(df, a, b, interactive, title):
         return path
     plt.figure(figsize=(10, 8))
     try:
-        sns.heatmap(ct, annot=True, fmt="d", cmap="Blues")
+        sns.heatmap(ct, annot=True, fmt="d", cmap=theming.sequential_cmap())
         plt.title(chart_title)
         plt.xlabel(b)
         plt.ylabel(a)
@@ -244,8 +284,13 @@ def _dispatch(df, columns, roles):
         if len(nums) == 2:
             return "scatter", {"x_column": nums[0], "y_column": nums[1]}
         if len(nums) == 1 and len(cats) == 1:
-            if roles[cats[0]]["nunique"] > _MAX_GROUP_LEVELS:
+            n_levels = roles[cats[0]]["nunique"]
+            if n_levels > 16:
                 return "bar", {"column": cats[0], "y_column": nums[0]}
+            if n_levels > _MAX_GROUP_LEVELS:
+                # Too many levels for distinct hues — facet on a shared scale
+                # instead of cycling the palette.
+                return "small_multiples", {"column": nums[0], "by_column": cats[0]}
             return "boxplot", {"column": nums[0], "by_column": cats[0]}
         if len(cats) == 2:
             return "crosstab_heatmap", {"columns": cats}
@@ -307,6 +352,30 @@ def _execute(csv_path, df, chart, params, interactive, title):
         return _plot_crosstab(df, a, b, interactive, title)
     if chart == "target_distribution":
         return vz.analyze_target_distribution(csv_path, params["target_column"]).get("plot_path")
+    if chart == "area":
+        from .composition import plot_area
+
+        return plot_area(
+            csv_path, params["x_column"], params["y_column"],
+            group_column=params.get("group_column"), title=title,
+        )
+    if chart == "stacked_bar":
+        from .composition import plot_stacked_bar
+
+        return plot_stacked_bar(
+            csv_path, params["category_column"], params["stack_column"],
+            y_column=params.get("y_column"), title=title,
+        )
+    if chart == "small_multiples":
+        from .composition import plot_small_multiples
+
+        return plot_small_multiples(
+            csv_path, params["column"], params["by_column"], title=title,
+        )
+    if chart == "missingness":
+        from .distribution import plot_missingness
+
+        return plot_missingness(csv_path, title=title).get("plot_path")
     raise ValueError(f"Unknown chart type: {chart}")
 
 

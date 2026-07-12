@@ -5,6 +5,8 @@ shared server instance.
 """
 from . import (  # noqa: F401  (imported for @mcp.tool registration side effects)
     auto_viz,
+    composition,
+    distribution,
     exploration,
     feature_engineering,
     ml,

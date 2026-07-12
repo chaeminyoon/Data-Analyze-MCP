@@ -8,7 +8,14 @@ import seaborn as sns
 
 from .. import theming
 from ..cache import get_data
-from ..helpers import output_path, require_columns, safe_name, save_current_figure
+from ..helpers import (
+    add_bar_labels,
+    output_path,
+    require_columns,
+    safe_name,
+    save_current_figure,
+    style_bars,
+)
 from ..server import mcp
 
 
@@ -78,11 +85,16 @@ def plot_boxplot(
     plt.figure(figsize=(figsize_width, figsize_height))
     try:
         if by_column:
+            # Never cycle hues: beyond the palette size, the smallest levels
+            # fold into 'Other' so each box keeps a distinct color.
+            from .composition import fold_other
+
+            df = df.copy()
+            df[by_column] = fold_other(df[by_column].astype(str))
             n_levels = int(df[by_column].nunique())
-            palette = (theming.palette() * (n_levels // 8 + 1))[:n_levels]
             sns.boxplot(
                 data=df, x=by_column, y=column, hue=by_column,
-                legend=show_legend, palette=palette,
+                legend=show_legend, palette=theming.palette()[:n_levels],
             )
             plt.title(title or f"Boxplot of {column} by {by_column}")
             plt.xlabel(xlabel or by_column)
@@ -129,6 +141,14 @@ def plot_scatter(
 
     plt.figure(figsize=(figsize_width, figsize_height))
     try:
+        # Color by the hue's job: ordered numbers get the theme's one-hue
+        # sequential ramp; categories get the validated categorical palette.
+        if hue_column and color_palette is None:
+            if pd.api.types.is_numeric_dtype(df[hue_column]):
+                color_palette = theming.sequential_cmap()
+            else:
+                n = int(df[hue_column].nunique())
+                color_palette = theming.palette()[:n] if n <= 8 else None
         ax = sns.scatterplot(
             data=df, x=x_column, y=y_column, hue=hue_column,
             s=marker_size, alpha=alpha, palette=color_palette,
@@ -167,7 +187,7 @@ def plot_correlation_heatmap(csv_path: str, columns: list = None) -> str:
     plt.figure(figsize=(12, 10))
     try:
         sns.heatmap(
-            numeric_df.corr(), annot=True, fmt=".2f", cmap="coolwarm",
+            numeric_df.corr(), annot=True, fmt=".2f", cmap=theming.diverging_cmap(),
             center=0, square=True, linewidths=0.5,
         )
         plt.title("Correlation Heatmap")
@@ -196,7 +216,9 @@ def analyze_target_distribution(csv_path: str, target_column: str) -> dict:
 
     plt.figure(figsize=(8, 6))
     try:
-        value_counts.plot(kind="bar")
+        ax = value_counts.plot(kind="bar")
+        style_bars(ax)
+        add_bar_labels(ax, fmt="{:,.0f}")
         plt.title(f"Distribution of {target_column}")
         plt.xlabel(target_column)
         plt.ylabel("Count")
@@ -301,6 +323,10 @@ def plot_line(
     figsize_height: int = 6,
 ) -> str:
     """Generate a line chart, ideal for time series (datetime x-axis).
+
+    There is deliberately no dual-axis (two y-scales) option — it invites
+    misreading. For two measures of different scale, plot them separately
+    (``plot_small_multiples``) or index both to a common base first.
 
     Args:
         x_column: X-axis column; object columns that parse as dates are
@@ -418,7 +444,9 @@ def plot_bar(
             return path
 
         plt.figure(figsize=(figsize_width, figsize_height))
-        data.plot(kind="bar")
+        ax = data.plot(kind="bar")
+        style_bars(ax)
+        add_bar_labels(ax)
         plt.title(chart_title)
         plt.xlabel(column)
         plt.ylabel(ylabel)

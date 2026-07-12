@@ -75,6 +75,51 @@ def save_current_figure(filename: str) -> str:
         plt.close()
 
 
+# --- [Mark specs] -----------------------------------------------------------
+# Shared chart-anatomy rules: bars get a surface-colored edge so adjacent
+# bars / stacked segments read as separate marks, and small bar charts get
+# selective direct value labels in muted ink (identity stays in the mark
+# color; text never wears the series color).
+MAX_DIRECT_LABELS = 12
+
+
+def style_bars(ax) -> None:
+    """Surface-colored 2px gap between every bar/segment on ``ax``."""
+    from . import theming
+
+    surface = theming.face_color()
+    for container in getattr(ax, "containers", []):
+        for patch in container:
+            patch.set_edgecolor(surface)
+            patch.set_linewidth(1.4)
+
+
+def add_bar_labels(ax, fmt: str = "{:,.3g}", orientation: str = "vertical") -> None:
+    """Direct value labels when the chart is small enough to stay readable.
+
+    Skipped entirely above ``MAX_DIRECT_LABELS`` bars — a number on every
+    mark of a dense chart is noise, and the axis already answers "how much".
+    """
+    containers = getattr(ax, "containers", [])
+    total = sum(len(c) for c in containers)
+    if not 0 < total <= MAX_DIRECT_LABELS or len(containers) != 1:
+        return
+    color = plt.rcParams.get("axes.labelcolor", "#3a4553")
+    padding = 2.5
+    for container in containers:
+        ax.bar_label(
+            container,
+            fmt=fmt.format,
+            color=color,
+            fontsize=plt.rcParams.get("xtick.labelsize", 9.5),
+            padding=padding,
+        )
+    if orientation == "vertical":
+        ax.margins(y=0.08)
+    else:
+        ax.margins(x=0.08)
+
+
 # --- [Column role classification] -------------------------------------------
 # Strings must look date-like (separators / time parts) before we even try
 # pd.to_datetime, so plain numbers like "10" are never treated as dates.

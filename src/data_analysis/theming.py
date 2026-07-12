@@ -29,14 +29,26 @@ _BASE_LIGHT = {
     "ytick.color": "#5c6b7a",
     "legend.frameon": False,
     "legend.fontsize": 9.5,
+    "lines.linewidth": 2.0,
+    "lines.markersize": 7,
 }
 
+# Every palette below (except ``classic``) passes the four accessibility
+# checks in ``palette_check`` on its own surface: OKLCH lightness band,
+# chroma floor (>= 0.1), adjacent-pair CVD separation (ΔE >= 12 under
+# protan/deutan/tritan simulation), and WCAG contrast >= 3:1. The slot
+# ORDER is part of the safety mechanism — it was chosen by exhaustive
+# search to maximize the minimum adjacent-pair CVD distance, so series
+# that appear next to each other stay distinguishable. Don't reorder or
+# swap hues casually; run ``pytest tests/test_palettes.py`` after edits.
 THEMES = {
     "modern": {
-        "description": "차분한 전문가 팔레트, 옅은 그리드, 좌측 정렬 볼드 타이틀 (기본값)",
-        "palette": ["#3d6fb6", "#e8853d", "#43a57c", "#d95b5b", "#8a6fc8",
-                    "#3fa9bc", "#c9a227", "#77808c"],
+        "description": "차분한 전문가 팔레트, 옅은 그리드, 좌측 정렬 볼드 타이틀 (기본값, 접근성 검증 통과)",
+        "palette": ["#2a78d6", "#e34948", "#4a3aa7", "#008300", "#c4497c",
+                    "#b07c00", "#12946a", "#eb6834"],
         "plotly_template": "plotly_white",
+        "sequential_cmap": "Blues",
+        "diverging_cmap": "RdBu_r",
         "rc": {
             **_BASE_LIGHT,
             "axes.edgecolor": "#d0d5db",
@@ -46,10 +58,12 @@ THEMES = {
         },
     },
     "dark": {
-        "description": "다크 배경 + 밝은 파스텔 팔레트 — 대시보드/발표용",
-        "palette": ["#6ea8e8", "#f2a65e", "#5bc895", "#f07878", "#b195e8",
-                    "#5fc8dc", "#e8c25a", "#9aa5b5"],
+        "description": "다크 배경 팔레트 — 대시보드/발표용 (접근성 검증 통과)",
+        "palette": ["#3987e5", "#e66767", "#c98500", "#199e70", "#d95926",
+                    "#9085e9", "#2e9e2e", "#d55181"],
         "plotly_template": "plotly_dark",
+        "sequential_cmap": "Blues",
+        "diverging_cmap": "RdBu_r",
         "rc": {
             **_BASE_LIGHT,
             "figure.facecolor": "#161a20",
@@ -66,9 +80,12 @@ THEMES = {
         },
     },
     "minimal": {
-        "description": "단일 액센트 + 그레이스케일, 그리드 최소화 — 보고서/논문용",
-        "palette": ["#3d6fb6", "#8b96a5", "#5c6b7a", "#c3cad3", "#2b3440", "#a9b2bd"],
+        "description": "뮤트 톤 팔레트, 그리드 최소화 — 보고서/논문용 (접근성 검증 통과)",
+        "palette": ["#3f6ea6", "#9a6a14", "#0a83ad", "#ad4a5e", "#6f60b8",
+                    "#238a3e"],
         "plotly_template": "simple_white",
+        "sequential_cmap": "Blues",
+        "diverging_cmap": "RdBu_r",
         "rc": {
             **_BASE_LIGHT,
             "axes.edgecolor": "#c3cad3",
@@ -78,10 +95,12 @@ THEMES = {
         },
     },
     "vibrant": {
-        "description": "고채도 팔레트, 강한 대비 — 프레젠테이션 강조용",
-        "palette": ["#ff595e", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93",
-                    "#36bfb1", "#ff7bac", "#4267ac"],
+        "description": "고채도 팔레트, 강한 대비 — 프레젠테이션 강조용 (접근성 검증 통과)",
+        "palette": ["#d81e5b", "#0f7fd4", "#e05206", "#425bd1", "#b26a00",
+                    "#00926e", "#6a35c8", "#3d8f00"],
         "plotly_template": "plotly_white",
+        "sequential_cmap": "Blues",
+        "diverging_cmap": "RdBu_r",
         "rc": {
             **_BASE_LIGHT,
             "axes.edgecolor": "#b9c0c8",
@@ -93,10 +112,12 @@ THEMES = {
         },
     },
     "classic": {
-        "description": "matplotlib/plotly 기본 스타일 (기존 형태)",
+        "description": "matplotlib/plotly 기본 스타일 (레거시 호환용 — 접근성 미검증)",
         "palette": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
                     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"],
         "plotly_template": "plotly",
+        "sequential_cmap": "Blues",
+        "diverging_cmap": "RdBu_r",
         "rc": {},
     },
 }
@@ -124,6 +145,20 @@ def face_color() -> str:
 
 def plotly_template() -> str:
     return THEMES[_current]["plotly_template"]
+
+
+def sequential_cmap() -> str:
+    """One-hue light→dark colormap for continuous magnitude."""
+    return THEMES[_current]["sequential_cmap"]
+
+
+def diverging_cmap() -> str:
+    """Two-hue + neutral-midpoint colormap for signed values (e.g. correlation)."""
+    return THEMES[_current]["diverging_cmap"]
+
+
+def is_dark() -> bool:
+    return _current == "dark"
 
 
 def plotly_kwargs() -> dict:
