@@ -315,3 +315,149 @@ def plot_small_multiples(
     except Exception as exc:  # noqa: BLE001
         plt.close()
         raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_pareto(
+    csv_path: str,
+    column: str,
+    y_column: str = None,
+    agg: str = "sum",
+    top_n: int = 15,
+    title: str = None,
+    figsize_width: int = 11,
+    figsize_height: int = 6,
+) -> dict:
+    """Pareto chart: which few categories carry most of the total?
+
+    Bars show each category's share of the total (%), the line shows the
+    cumulative share — both on ONE percentage axis (no dual-axis tricks).
+    The category where the cumulative share crosses 80% is annotated.
+
+    Returns the share table and the categories covering 80%.
+    """
+    df = get_data(csv_path)
+    require_columns(df, column, y_column)
+    if y_column:
+        require_numeric(df, y_column)
+        totals = df.groupby(column)[y_column].agg(agg)
+        totals = totals[totals > 0]
+    else:
+        totals = df[column].value_counts()
+    if totals.empty:
+        raise ValueError("Nothing to plot — no positive values.")
+
+    totals = totals.sort_values(ascending=False)
+    share = totals / totals.sum() * 100
+    kept = share.head(top_n)
+    cum = share.cumsum()
+    n80 = int((cum < 80).sum()) + 1
+
+    plt.figure(figsize=(figsize_width, figsize_height))
+    try:
+        ax = plt.gca()
+        palette = theming.palette()
+        ax.bar(range(len(kept)), kept.values, color=palette[0],
+               edgecolor=theming.face_color(), linewidth=1.2)
+        ax.plot(range(len(kept)), cum.head(len(kept)).values, marker="o",
+                color=palette[1], label="누적 비율")
+        thresh_color = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        ax.axhline(80, linestyle="--", linewidth=1.1, color=thresh_color)
+        ax.annotate(f"80% — 상위 {n80}개", (0.99, 81.5),
+                    xycoords=("axes fraction", "data"), ha="right",
+                    fontsize=9.5,
+                    color=plt.rcParams.get("axes.labelcolor", "#3a4553"))
+        ax.set_xticks(range(len(kept)))
+        ax.set_xticklabels([str(i) for i in kept.index], rotation=45, ha="right")
+        ax.set_ylabel("Share of total (%)")
+        ax.set_ylim(0, 105)
+        metric = f"{agg}({y_column})" if y_column else "count"
+        ax.set_title(title or f"Pareto — {metric} by {column}")
+        ax.legend()
+        path = save_current_figure(f"pareto_{safe_name(column)}.png")
+        return {
+            "metric": metric,
+            "categories_for_80pct": list(map(str, share.index[:n80])),
+            "share_pct": {str(k): round(float(v), 2) for k, v in kept.items()},
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_waterfall(
+    csv_path: str,
+    category_column: str,
+    value_column: str,
+    agg: str = "sum",
+    top_n: int = 12,
+    title: str = None,
+    figsize_width: int = 11,
+    figsize_height: int = 6,
+) -> dict:
+    """Waterfall chart: how per-category contributions add up to the total.
+
+    Positive contributions rise in the theme's primary hue, negative ones
+    fall in its counter hue, and the final bar is the neutral total. Small
+    contributions beyond ``top_n`` fold into 'Other' so the story stays
+    readable. Every bar is direct-labeled.
+    """
+    df = get_data(csv_path)
+    require_columns(df, category_column, value_column)
+    require_numeric(df, value_column)
+
+    contrib = df.groupby(category_column)[value_column].agg(agg)
+    contrib = contrib.reindex(contrib.abs().sort_values(ascending=False).index)
+    if len(contrib) > top_n:
+        other = float(contrib.iloc[top_n:].sum())
+        contrib = contrib.head(top_n)
+        contrib[OTHER_LABEL] = other
+    total = float(contrib.sum())
+
+    plt.figure(figsize=(figsize_width, figsize_height))
+    try:
+        ax = plt.gca()
+        palette = theming.palette()
+        up, down = palette[0], palette[1]
+        neutral = plt.rcParams.get("axes.labelcolor", "#5c6b7a")
+        label_color = plt.rcParams.get("axes.labelcolor", "#3a4553")
+        fontsize = float(plt.rcParams.get("xtick.labelsize", 9.5))
+
+        running = 0.0
+        for i, (name, v) in enumerate(contrib.items()):
+            v = float(v)
+            color = up if v >= 0 else down
+            ax.bar(i, v, bottom=running, color=color,
+                   edgecolor=theming.face_color(), linewidth=1.2)
+            ax.annotate(f"{v:+,.3g}", (i, running + v), ha="center",
+                        va="bottom" if v >= 0 else "top",
+                        xytext=(0, 3 if v >= 0 else -3),
+                        textcoords="offset points",
+                        fontsize=fontsize, color=label_color)
+            running += v
+        i = len(contrib)
+        ax.bar(i, total, color=neutral, alpha=0.55,
+               edgecolor=theming.face_color(), linewidth=1.2)
+        ax.annotate(f"{total:,.3g}", (i, total), ha="center", va="bottom",
+                    xytext=(0, 3), textcoords="offset points",
+                    fontsize=fontsize, fontweight="bold", color=label_color)
+
+        ax.set_xticks(range(len(contrib) + 1))
+        ax.set_xticklabels([str(k) for k in contrib.index] + ["Total"],
+                           rotation=45, ha="right")
+        ax.set_ylabel(f"{agg}({value_column})")
+        ax.set_title(title or f"Waterfall — {value_column} by {category_column}")
+        ax.margins(y=0.12)
+        path = save_current_figure(
+            f"waterfall_{safe_name(value_column)}_by_{safe_name(category_column)}.png"
+        )
+        return {
+            "total": round(total, 4),
+            "contributions": {str(k): round(float(v), 4) for k, v in contrib.items()},
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc

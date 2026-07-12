@@ -561,3 +561,141 @@ def plot_interactive_heatmap(csv_path: str, method: str = "pearson", title: str 
         return path
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"Interactive visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_pivot_heatmap(
+    csv_path: str,
+    index_column: str,
+    column_column: str,
+    value_column: str,
+    agg: str = "mean",
+    title: str = None,
+) -> str:
+    """Aggregated heatmap: ``agg(value_column)`` for category × category.
+
+    The crosstab heatmap answers "how many"; this answers "how much" —
+    e.g. mean price by district × building type. Cells are annotated when
+    the grid is small enough to read.
+    """
+    df = get_data(csv_path)
+    require_columns(df, index_column, column_column, value_column)
+    if not pd.api.types.is_numeric_dtype(df[value_column]):
+        raise ValueError(f"Column '{value_column}' must be numeric.")
+
+    table = df.pivot_table(index=index_column, columns=column_column,
+                           values=value_column, aggfunc=agg)
+    if table.empty:
+        raise ValueError("Pivot produced an empty table.")
+
+    plt.figure(figsize=(max(8, 0.9 * table.shape[1] + 4),
+                        max(5, 0.5 * table.shape[0] + 2)))
+    try:
+        sns.heatmap(
+            table, annot=table.size <= 120, fmt=".3g",
+            cmap=theming.sequential_cmap(), linewidths=0.5,
+            linecolor=theming.face_color(),
+        )
+        plt.title(title or f"{agg}({value_column}) — {index_column} × {column_column}")
+        return save_current_figure(
+            f"pivot_{safe_name(value_column)}_{safe_name(index_column)}"
+            f"_x_{safe_name(column_column)}.png"
+        )
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_hexbin(
+    csv_path: str,
+    x_column: str,
+    y_column: str,
+    gridsize: int = 40,
+    title: str = None,
+    figsize_width: int = 9,
+    figsize_height: int = 7,
+) -> str:
+    """Hexbin density plot — the scatter replacement when rows overplot.
+
+    Beyond a few thousand points a scatter becomes one solid blob; hexbin
+    encodes point density on the theme's sequential ramp so structure
+    stays visible at any row count.
+    """
+    df = get_data(csv_path)
+    require_columns(df, x_column, y_column)
+    for c in (x_column, y_column):
+        if not pd.api.types.is_numeric_dtype(df[c]):
+            raise ValueError(f"Column '{c}' must be numeric.")
+    sub = df[[x_column, y_column]].dropna()
+
+    plt.figure(figsize=(figsize_width, figsize_height))
+    try:
+        hb = plt.hexbin(sub[x_column], sub[y_column], gridsize=gridsize,
+                        cmap=theming.sequential_cmap(), mincnt=1,
+                        edgecolors="none")
+        plt.colorbar(hb, label="Count")
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(title or f"Density: {x_column} vs {y_column} ({len(sub):,} rows)")
+        return save_current_figure(
+            f"hexbin_{safe_name(x_column)}_vs_{safe_name(y_column)}.png"
+        )
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_rolling(
+    csv_path: str,
+    x_column: str,
+    y_column: str,
+    window: int = 7,
+    agg: str = "mean",
+    title: str = None,
+    figsize_width: int = 12,
+    figsize_height: int = 6,
+) -> str:
+    """Raw series (muted) + rolling aggregate (primary): trend through noise.
+
+    The raw line stays visible so smoothing never hides the data — the
+    rolling line answers "where is this going", the raw line answers
+    "how noisy is it really".
+    """
+    df = get_data(csv_path).copy()
+    require_columns(df, x_column, y_column)
+    if not pd.api.types.is_numeric_dtype(df[y_column]):
+        raise ValueError(f"Column '{y_column}' must be numeric.")
+    if window < 2:
+        raise ValueError("window must be >= 2.")
+
+    if not pd.api.types.is_datetime64_any_dtype(df[x_column]) and not pd.api.types.is_numeric_dtype(df[x_column]):
+        converted = pd.to_datetime(df[x_column], errors="coerce", format="mixed")
+        if converted.notna().mean() > 0.9:
+            df[x_column] = converted
+
+    data = (
+        df[[x_column, y_column]].dropna()
+        .groupby(x_column)[y_column].mean().sort_index()
+    )
+    rolled = data.rolling(window, min_periods=max(2, window // 2)).agg(agg)
+
+    plt.figure(figsize=(figsize_width, figsize_height))
+    try:
+        muted = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        plt.plot(data.index, data.values, linewidth=1.0, alpha=0.55,
+                 color=muted, label=y_column)
+        plt.plot(rolled.index, rolled.values, linewidth=2.2,
+                 color=theming.palette()[0], label=f"{window}-period {agg}")
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(title or f"{y_column} with {window}-period rolling {agg}")
+        plt.legend()
+        plt.xticks(rotation=30, ha="right")
+        return save_current_figure(
+            f"rolling_{safe_name(y_column)}_w{window}.png"
+        )
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc

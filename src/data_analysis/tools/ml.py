@@ -537,3 +537,64 @@ def plot_residuals(
     except Exception as exc:  # noqa: BLE001
         plt.close()
         raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_learning_curve(
+    csv_path: str,
+    target_column: str,
+    feature_columns: list = None,
+    algorithm: str = "RandomForest",
+    cv: int = 5,
+) -> dict:
+    """Learning curve: does the model need more data, or is it overfitting?
+
+    Train and validation scores across increasing training-set sizes, each
+    with a ±1σ band. A wide persistent gap = overfitting; both curves low
+    and flat = underfitting; validation still climbing = more data helps.
+    """
+    from sklearn.model_selection import learning_curve as sk_learning_curve
+
+    df = get_data(csv_path).copy()
+    X, y = _prepare_xy(df, target_column, feature_columns)
+    is_classification = is_classification_target(y)
+    if is_classification:
+        y = LabelEncoder().fit_transform(y)
+    model = _build_estimator(algorithm, is_classification)
+    scoring = "accuracy" if is_classification else "r2"
+
+    sizes, train_scores, val_scores = sk_learning_curve(
+        model, X, y, cv=cv, scoring=scoring,
+        train_sizes=np.linspace(0.1, 1.0, 6), n_jobs=-1, random_state=42,
+        shuffle=True,
+    )
+    tr_mean, tr_std = train_scores.mean(axis=1), train_scores.std(axis=1)
+    va_mean, va_std = val_scores.mean(axis=1), val_scores.std(axis=1)
+
+    plt.figure(figsize=(9, 6))
+    try:
+        palette = theming.palette()
+        for mean, std, color, label in (
+            (tr_mean, tr_std, palette[0], "Train"),
+            (va_mean, va_std, palette[1], f"Validation ({cv}-fold)"),
+        ):
+            plt.plot(sizes, mean, marker="o", color=color, label=label)
+            plt.fill_between(sizes, mean - std, mean + std, color=color,
+                             alpha=0.15, edgecolor="none")
+        plt.xlabel("Training set size")
+        plt.ylabel(scoring)
+        plt.title(f"Learning curve — {algorithm} on {target_column}")
+        plt.legend()
+        path = save_current_figure(f"learning_curve_{safe_name(algorithm)}.png")
+        gap = float(tr_mean[-1] - va_mean[-1])
+        return {
+            "algorithm": algorithm,
+            "scoring": scoring,
+            "final_train_score": round(float(tr_mean[-1]), 4),
+            "final_validation_score": round(float(va_mean[-1]), 4),
+            "generalization_gap": round(gap, 4),
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc

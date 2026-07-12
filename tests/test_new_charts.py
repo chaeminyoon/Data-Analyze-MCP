@@ -140,3 +140,41 @@ def test_feature_importance_and_residuals(ml_csv):
 def test_residuals_rejects_classification_target(ml_csv):
     with pytest.raises(ValueError, match="regression"):
         ml.plot_residuals(ml_csv, "target_bin", feature_columns=["x1", "x2"])
+
+
+def test_pareto_identifies_80pct_head(sales_csv):
+    result = composition.plot_pareto(sales_csv, "channel", y_column="revenue")
+    assert os.path.exists(result["plot_path"])
+    assert 1 <= len(result["categories_for_80pct"]) <= 12
+    shares = list(result["share_pct"].values())
+    assert shares == sorted(shares, reverse=True)
+
+
+def test_waterfall_total_matches_sum(sales_csv):
+    result = composition.plot_waterfall(sales_csv, "region", "revenue")
+    assert os.path.exists(result["plot_path"])
+    assert abs(sum(result["contributions"].values()) - result["total"]) < 1e-6
+
+
+def test_pivot_heatmap_and_hexbin_and_rolling(sales_csv):
+    from data_analysis.tools import visualization as vz
+
+    assert os.path.exists(
+        vz.plot_pivot_heatmap(sales_csv, "region", "period", "revenue")
+    )
+    assert os.path.exists(vz.plot_hexbin(sales_csv, "units", "revenue"))
+    assert os.path.exists(vz.plot_rolling(sales_csv, "date", "revenue", window=7))
+
+
+def test_qq_reports_fit(sales_csv):
+    result = distribution.plot_qq(sales_csv, "revenue")
+    assert os.path.exists(result["plot_path"])
+    assert 0 < result["fit"]["r"] <= 1
+
+
+def test_learning_curve_reports_gap(ml_csv):
+    result = ml.plot_learning_curve(ml_csv, "target_bin",
+                                    feature_columns=["x1", "x2"], cv=3)
+    assert os.path.exists(result["plot_path"])
+    assert result["final_validation_score"] > 0.5
+    assert isinstance(result["generalization_gap"], float)

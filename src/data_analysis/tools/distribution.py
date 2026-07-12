@@ -212,3 +212,47 @@ def stat_tile(
     except Exception as exc:  # noqa: BLE001
         plt.close()
         raise ValueError(f"Visualization failed: {exc}") from exc
+
+
+@mcp.tool()
+def plot_qq(
+    csv_path: str,
+    column: str,
+    title: str = None,
+    figsize_width: int = 7,
+    figsize_height: int = 6,
+) -> dict:
+    """Q-Q plot against a normal distribution — the visual companion to
+    ``test_normality``. Systematic curvature means skew; ends peeling off the
+    line mean heavy tails. Returns the fit slope/intercept/r as well."""
+    from scipy import stats
+
+    df = get_data(csv_path)
+    require_numeric(df, column)
+    values = df[column].dropna().to_numpy()
+    if len(values) < 3:
+        raise ValueError(f"Column '{column}' needs at least 3 non-null values.")
+
+    plt.figure(figsize=(figsize_width, figsize_height))
+    try:
+        ax = plt.gca()
+        (osm, osr), (slope, intercept, r) = stats.probplot(values, dist="norm")
+        ax.scatter(osm, osr, s=22, alpha=0.6, color=theming.palette()[0],
+                   edgecolors="none")
+        ref_color = plt.rcParams.get("axes.edgecolor", "#c3c2b7")
+        ax.plot(osm, slope * np.asarray(osm) + intercept, linestyle="--",
+                linewidth=1.4, color=ref_color)
+        ax.set_xlabel("Theoretical quantiles (normal)")
+        ax.set_ylabel(f"Observed quantiles ({column})")
+        ax.set_title(title or f"Q-Q plot — {column} vs normal")
+        path = save_current_figure(f"qq_{safe_name(column)}.png")
+        return {
+            "column": column,
+            "fit": {"slope": round(float(slope), 4),
+                    "intercept": round(float(intercept), 4),
+                    "r": round(float(r), 4)},
+            "plot_path": path,
+        }
+    except Exception as exc:  # noqa: BLE001
+        plt.close()
+        raise ValueError(f"Visualization failed: {exc}") from exc
