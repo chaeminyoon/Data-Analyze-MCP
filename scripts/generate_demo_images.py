@@ -97,38 +97,72 @@ ship(
     "demo_vibrant.png",
 )
 
-# 8. Showcase montage: four forms × four themes in one strip.
-from PIL import Image  # noqa: E402
+# 8. Showcase hero — a typeset board: title row + four captioned panels.
+#    Every panel is still an unedited tool output; only the framing is set.
+import matplotlib.image as mpimg  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import shutil as _shutil  # noqa: E402
 
 theming.apply("modern")
-panel_a = visualization.plot_scatter(
-    HOUSE, "area", "price", hue_column="bedrooms", title="modern — scatter",
+panel_a = _shutil.copy(
+    visualization.plot_scatter(
+        HOUSE, "area", "price", hue_column="bedrooms",
+        title="주택 면적 vs 가격 — 침실 수는 시퀀셜 램프",
+    ),
+    WORK / "_panel_a.png",
 )
 theming.apply("dark")
-panel_b = composition.plot_stacked_bar(
-    CHURN, "contract_type", "internet_service", title="dark — stacked bar",
+panel_b = _shutil.copy(
+    composition.plot_stacked_bar(
+        CHURN, "contract_type", "internet_service",
+        title="계약 유형별 인터넷 서비스 구성",
+    ),
+    WORK / "_panel_b.png",
 )
 theming.apply("minimal")
-panel_c = distribution.plot_ecdf(
-    HOUSE, "price", group_column="furnishingstatus", title="minimal — ECDF",
+panel_c = _shutil.copy(
+    distribution.plot_ecdf(
+        HOUSE, "price", group_column="furnishingstatus",
+        title="가구 상태별 가격 누적분포",
+    ),
+    WORK / "_panel_c.png",
 )
 theming.apply("vibrant")
-panel_d = composition.plot_area(
-    SALES, "date", "sales", group_column="product_id", resample="ME",
-    title="vibrant — stacked area",
+panel_d = _shutil.copy(
+    composition.plot_area(
+        SALES, "date", "sales", group_column="product_id", resample="ME",
+        title="제품별 월간 매출 구성",
+    ),
+    WORK / "_panel_d.png",
 )
+theming.apply("modern")
 
-cells = [Image.open(p) for p in (panel_a, panel_b, panel_c, panel_d)]
-w = min(im.width for im in cells)
-cells = [im.resize((w, int(im.height * w / im.width)), Image.LANCZOS) for im in cells]
-gap = 16
-row_h = [max(cells[i].height for i in pair) for pair in ((0, 1), (2, 3))]
-canvas = Image.new("RGB", (2 * w + gap, sum(row_h) + gap), "#ffffff")
-canvas.paste(cells[0], (0, 0))
-canvas.paste(cells[1], (w + gap, 0))
-canvas.paste(cells[2], (0, row_h[0] + gap))
-canvas.paste(cells[3], (w + gap, row_h[0] + gap))
-canvas.save(IMAGES / "showcase.png", optimize=True)
+PANELS = [
+    (panel_a, "modern (기본)", "자동 추천 산점도 — 순서형 hue는 한 색상의 명도로"),
+    (panel_b, "dark", "set_chart_style 한 번으로 다크 전용 팔레트 전환"),
+    (panel_c, "minimal", "보고서용 뮤트 톤 — ECDF로 정확한 백분위"),
+    (panel_d, "vibrant", "발표용 고채도 — 스택 영역으로 구성 변화"),
+]
+
+fig = plt.figure(figsize=(16, 11.6), facecolor="#ffffff")
+gs = fig.add_gridspec(2, 2, left=0.015, right=0.985, top=0.845, bottom=0.015,
+                      wspace=0.05, hspace=0.17)
+for (path, theme, caption), pos in zip(PANELS, [gs[0, 0], gs[0, 1], gs[1, 0], gs[1, 1]]):
+    ax = fig.add_subplot(pos)
+    ax.imshow(mpimg.imread(path))
+    ax.axis("off")
+    ax.set_title(f"{theme}  ·  {caption}", fontsize=12.5, color="#3a4553",
+                 loc="left", pad=8)
+fig.text(0.015, 0.955, "Data-Analyze-MCP", fontsize=24, fontweight="bold",
+         color="#2a78d6", ha="left")
+fig.text(0.015, 0.905,
+         "자연어 한 마디 → 분석·전처리·시각화  ·  60개 MCP 도구  ·  접근성 검증 팔레트 4종 (CVD 시뮬레이션 · 대비 3:1 · CI 강제)",
+         fontsize=13, color="#52514e", ha="left")
+fig.text(0.985, 0.955, "모든 패널은 무편집 도구 출력", fontsize=11,
+         color="#8b96a5", ha="right")
+fig.savefig(IMAGES / "showcase.png", dpi=110, facecolor="#ffffff",
+            bbox_inches="tight")
+plt.close(fig)
 print("  showcase.png")
 
 theming.apply("modern")
