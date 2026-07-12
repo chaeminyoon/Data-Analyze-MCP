@@ -1,9 +1,7 @@
 <div align="center">
-
-# Data-Analyze-MCP
-
 **English** | [한국어](README.ko.md)
 
+# Data-Analyze-MCP
 **Data analysis, preprocessing, and visualization from a single natural-language request — an MCP data-analysis server for LLMs**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
